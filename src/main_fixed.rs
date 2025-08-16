@@ -449,7 +449,9 @@ impl PlonApp {
         
         ui.separator();
         
-        egui::ScrollArea::vertical().show(ui, |ui| {
+        egui::ScrollArea::vertical()
+            .id_source("list_view_scroll")
+            .show(ui, |ui| {
             for task in &mut self.tasks {
                 // Apply filter
                 if !self.filter_text.is_empty() && 
@@ -498,7 +500,10 @@ impl PlonApp {
     fn show_kanban_view(&mut self, ui: &mut egui::Ui) {
         ui.heading("Kanban Board");
         
-        ui.horizontal(|ui| {
+        egui::ScrollArea::horizontal()
+            .id_source("kanban_board_main")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
             let columns = [
                 ("📋 To Do", domain::task::TaskStatus::Todo),
                 ("🚀 In Progress", domain::task::TaskStatus::InProgress),
@@ -513,6 +518,7 @@ impl PlonApp {
                     ui.separator();
                     
                     egui::ScrollArea::vertical()
+                        .id_source(format!("kanban_column_{:?}", status))
                         .max_height(600.0)
                         .show(ui, |ui| {
                             for task in &self.tasks {
@@ -536,7 +542,8 @@ impl PlonApp {
                 
                 ui.separator();
             }
-        });
+                });
+            });
     }
     
     fn show_timeline_view(&mut self, ui: &mut egui::Ui) {

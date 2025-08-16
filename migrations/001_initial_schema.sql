@@ -24,12 +24,12 @@ CREATE TABLE IF NOT EXISTS tasks (
     FOREIGN KEY (parent_task_id) REFERENCES tasks(id)
 );
 
-CREATE INDEX idx_tasks_status ON tasks(status);
-CREATE INDEX idx_tasks_assigned_resource ON tasks(assigned_resource_id);
-CREATE INDEX idx_tasks_goal ON tasks(goal_id);
-CREATE INDEX idx_tasks_parent ON tasks(parent_task_id);
-CREATE INDEX idx_tasks_scheduled_date ON tasks(scheduled_date);
-CREATE INDEX idx_tasks_due_date ON tasks(due_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned_resource ON tasks(assigned_resource_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_goal ON tasks(goal_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_date ON tasks(scheduled_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
 
 -- Subtasks table
 CREATE TABLE IF NOT EXISTS subtasks (
