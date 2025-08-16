@@ -3,6 +3,7 @@ use crate::services::summarization::{SummarizationService, SummaryCache};
 use crate::services::DependencyService;
 use crate::ui::widgets::task_detail_modal::{TaskDetailModal, TaskAction};
 use crate::repository::comment_repository::CommentRepository;
+use petgraph::visit::EdgeRef;
 pub use crate::services::summarization::SummarizationLevel;
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use std::collections::HashMap;
@@ -1150,7 +1151,7 @@ impl MapView {
         
         // Step 4: Arrange goals with their tasks
         if !goals.is_empty() {
-            let mut goal_y = 0.0;
+            let mut goal_y: f64 = 0.0;
             
             // Find the maximum Y position of all tasks
             for task in tasks.iter() {

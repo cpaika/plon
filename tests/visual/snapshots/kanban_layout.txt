@@ -1,0 +1,49 @@
+=== KANBAN BOARD LAYOUT ===
+
+Column 0: To Do
+  Position: (16, 100)
+  Size: 320x800
+  WIP Limit: None
+  Collapsed: false
+  Tasks: 5
+    - Task 0 (Priority: Medium)
+    - Task 4 (Priority: Medium)
+    - Task 8 (Priority: Medium)
+    - Task 12 (Priority: Medium)
+    - Design new feature (Priority: High)
+
+Column 1: In Progress
+  Position: (352, 100)
+  Size: 320x800
+  WIP Limit: Some(3)
+  Collapsed: false
+  Tasks: 5
+    - Task 1 (Priority: Medium)
+    - Task 5 (Priority: Medium)
+    - Task 9 (Priority: Medium)
+    - Task 13 (Priority: Medium)
+    - Implement authentication (Priority: Critical)
+
+Column 2: Review
+  Position: (688, 100)
+  Size: 320x800
+  WIP Limit: Some(2)
+  Collapsed: false
+  Tasks: 5
+    - Task 2 (Priority: Medium)
+    - Task 6 (Priority: Medium)
+    - Task 10 (Priority: Medium)
+    - Task 14 (Priority: Medium)
+    - Code review (Priority: Medium)
+
+Column 3: Done
+  Position: (1024, 100)
+  Size: 320x800
+  WIP Limit: None
+  Collapsed: false
+  Tasks: 4
+    - Task 3 (Priority: Medium)
+    - Task 7 (Priority: Medium)
+    - Task 11 (Priority: Medium)
+    - Deploy to staging (Priority: Low)
+

@@ -639,11 +639,13 @@ impl KanbanView {
         
         ui.separator();
         
-        // Kanban board
+        // Kanban board - use full available height
+        let available_height = ui.available_height();
         ScrollArea::horizontal()
             .id_source("kanban_main_horizontal_scroll")
             .show(ui, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_top(|ui| {
+                ui.set_min_height(available_height);
                 let columns_clone = self.columns.clone();
                 for (col_idx, column) in columns_clone.iter().enumerate() {
                     if !column.visible {
@@ -747,9 +749,11 @@ impl KanbanView {
             if !column_collapsed {
                 ui.separator();
                 
+                // Use most of the available height for the scroll area
+                let scroll_height = ui.available_height() - 50.0; // Leave some space for header
                 ScrollArea::vertical()
                     .id_source(format!("kanban_column_scroll_{}", column_index))
-                    .max_height(ui.available_height() - 100.0)
+                    .max_height(scroll_height.max(400.0)) // Ensure minimum height
                     .show(ui, |ui| {
                         // Drop zone highlight
                         if self.is_dragging() {
