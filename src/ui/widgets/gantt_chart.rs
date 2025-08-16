@@ -244,7 +244,7 @@ impl InteractiveGanttChart {
     
     pub fn snap_to_grid(&self, pos: Pos2, column_width: f32) -> Pos2 {
         if self.snap_to_grid {
-            let snapped_x = ((pos.x / column_width).round() * column_width);
+            let snapped_x = (pos.x / column_width).round() * column_width;
             Pos2::new(snapped_x, pos.y)
         } else {
             pos

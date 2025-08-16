@@ -3,7 +3,7 @@
 use crate::ui::PlonApp;
 use crate::repository::Repository;
 use crate::services::{TaskService, GoalService, ResourceService, TaskConfigService};
-use crate::domain::task::{Task, TaskStatus};
+use crate::domain::task::Task;
 use std::sync::Arc;
 use uuid::Uuid;
 
