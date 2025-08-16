@@ -3,6 +3,7 @@ mod goal_service;
 mod resource_service;
 mod recurring_service;
 mod scheduler;
+pub mod summarization;
 
 pub use task_service::TaskService;
 pub use goal_service::GoalService;
