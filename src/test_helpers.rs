@@ -31,7 +31,7 @@ impl PlonApp {
             show_goal_editor: false,
             
             list_view: crate::ui::views::list_view::ListView::new(),
-            kanban_view: crate::ui::views::kanban_view_improved::KanbanView::new(),
+            kanban_view: crate::ui::views::kanban_view_enhanced::KanbanView::new(),
             map_view: crate::ui::views::map_view::MapView::new(),
             timeline_view: crate::ui::views::timeline_view::TimelineView::new(),
             dashboard_view: crate::ui::views::dashboard_view::DashboardView::new(),
@@ -50,7 +50,7 @@ impl PlonApp {
     }
     
     pub fn has_improved_kanban_view(&self) -> bool {
-        true // Type system ensures we're using kanban_view_improved::KanbanView
+        true // Type system ensures we're using kanban_view_enhanced::KanbanView
     }
     
     pub fn add_test_task(&mut self, task: Task) {
@@ -135,11 +135,11 @@ impl PlonApp {
     }
     
     // Direct access to kanban view for comprehensive testing
-    pub fn get_kanban_view(&self) -> &crate::ui::views::kanban_view_improved::KanbanView {
+    pub fn get_kanban_view(&self) -> &crate::ui::views::kanban_view_enhanced::KanbanView {
         &self.kanban_view
     }
     
-    pub fn get_kanban_view_mut(&mut self) -> &mut crate::ui::views::kanban_view_improved::KanbanView {
+    pub fn get_kanban_view_mut(&mut self) -> &mut crate::ui::views::kanban_view_enhanced::KanbanView {
         &mut self.kanban_view
     }
     
@@ -148,7 +148,7 @@ impl PlonApp {
         // Clear kanban tasks and re-add from app tasks
         self.kanban_view.tasks.clear();
         for column in &mut self.kanban_view.columns {
-            column.tasks.clear();
+            column.task_order.clear();
         }
         
         for task in &self.tasks {

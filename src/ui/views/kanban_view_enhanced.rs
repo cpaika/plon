@@ -235,22 +235,36 @@ impl KanbanView {
     }
 
     pub fn update_drag_with_animation(&mut self, position: Pos2) {
+        let (old_hover, task_id, needs_animation) = if let Some(state) = &self.drag_state {
+            let old = (state.hover_column, state.hover_position);
+            (old, state.task_id, true)
+        } else {
+            return;
+        };
+        
+        // Update drag state
         if let Some(state) = &mut self.drag_state {
-            let old_hover = (state.hover_column, state.hover_position);
-            
             state.current_position = position;
-            state.hover_column = self.get_column_at_position(position);
-            
-            // Calculate hover position within column
-            if let Some(col_idx) = state.hover_column {
-                state.hover_position = self.calculate_hover_position(col_idx, position.y);
-                
-                // Trigger animation for gap opening
-                let new_hover = (state.hover_column, state.hover_position);
-                if old_hover != new_hover {
-                    self.animate_gap_change(old_hover, new_hover, state.task_id);
-                }
-            }
+        }
+        
+        // Calculate new positions
+        let new_column = self.get_column_at_position(position);
+        let new_position = if let Some(col_idx) = new_column {
+            self.calculate_hover_position(col_idx, position.y)
+        } else {
+            None
+        };
+        
+        // Update state with new positions
+        if let Some(state) = &mut self.drag_state {
+            state.hover_column = new_column;
+            state.hover_position = new_position;
+        }
+        
+        // Trigger animation if positions changed
+        let new_hover = (new_column, new_position);
+        if old_hover != new_hover && needs_animation {
+            self.animate_gap_change(old_hover, new_hover, task_id);
         }
     }
 
@@ -448,24 +462,34 @@ impl KanbanView {
     }
 
     pub fn set_hover_insert_position(&mut self, column: usize, position: usize) {
+        let (old_hover, task_id) = if let Some(state) = &self.drag_state {
+            ((state.hover_column, state.hover_position), state.task_id)
+        } else {
+            return;
+        };
+        
         if let Some(state) = &mut self.drag_state {
-            let old_hover = (state.hover_column, state.hover_position);
             state.hover_column = Some(column);
             state.hover_position = Some(position);
-            
-            let new_hover = (Some(column), Some(position));
-            self.animate_gap_change(old_hover, new_hover, state.task_id);
         }
+        
+        let new_hover = (Some(column), Some(position));
+        self.animate_gap_change(old_hover, new_hover, task_id);
     }
 
     pub fn clear_hover_insert_position(&mut self) {
+        let (old_hover, task_id) = if let Some(state) = &self.drag_state {
+            ((state.hover_column, state.hover_position), state.task_id)
+        } else {
+            return;
+        };
+        
         if let Some(state) = &mut self.drag_state {
-            let old_hover = (state.hover_column, state.hover_position);
             state.hover_column = None;
             state.hover_position = None;
-            
-            self.animate_gap_change(old_hover, (None, None), state.task_id);
         }
+        
+        self.animate_gap_change(old_hover, (None, None), task_id);
     }
 
     pub fn get_drop_animation_state(&self, task_id: Uuid) -> DropAnimation {
@@ -947,19 +971,27 @@ impl KanbanView {
         self.tasks = tasks.clone();
         
         // Sync task positions if needed
-        for task in &self.tasks {
+        let task_ids: Vec<Uuid> = self.tasks.iter().map(|t| t.id).collect();
+        for task_id in task_ids {
             let task_in_column = self.columns.iter()
-                .any(|col| col.task_order.contains(&task.id));
+                .any(|col| col.task_order.contains(&task_id));
             
             if !task_in_column {
-                for column in self.columns.iter_mut() {
-                    if column.status == task.status {
-                        let order = column.task_order.len();
-                        column.task_order.push(task.id);
-                        if let Some(t) = self.tasks.iter_mut().find(|t| t.id == task.id) {
-                            t.metadata.insert("kanban_order".to_string(), order.to_string());
+                // Find the task's status
+                let task_status = self.tasks.iter()
+                    .find(|t| t.id == task_id)
+                    .map(|t| t.status);
+                
+                if let Some(status) = task_status {
+                    for column in self.columns.iter_mut() {
+                        if column.status == status {
+                            let order = column.task_order.len();
+                            column.task_order.push(task_id);
+                            if let Some(t) = self.tasks.iter_mut().find(|t| t.id == task_id) {
+                                t.metadata.insert("kanban_order".to_string(), order.to_string());
+                            }
+                            break;
                         }
-                        break;
                     }
                 }
             }
