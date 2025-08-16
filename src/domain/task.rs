@@ -24,6 +24,7 @@ pub struct Task {
     pub parent_task_id: Option<Uuid>,
     pub position: Position, // For map view
     pub subtasks: Vec<SubTask>,
+    pub configuration_id: Option<Uuid>, // Link to task configuration
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -82,6 +83,7 @@ impl Task {
             parent_task_id: None,
             position: Position { x: 0.0, y: 0.0 },
             subtasks: Vec::new(),
+            configuration_id: None,
         }
     }
 

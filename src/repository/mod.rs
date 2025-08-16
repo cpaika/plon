@@ -5,6 +5,7 @@ pub mod resource_repository;
 pub mod comment_repository;
 pub mod dependency_repository;
 pub mod recurring_repository;
+pub mod task_config_repository;
 
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ pub struct Repository {
     pub comments: comment_repository::CommentRepository,
     pub dependencies: dependency_repository::DependencyRepository,
     pub recurring: recurring_repository::RecurringRepository,
+    pub task_configs: task_config_repository::TaskConfigRepository,
 }
 
 impl Repository {
@@ -30,6 +32,7 @@ impl Repository {
             comments: comment_repository::CommentRepository::new(pool.clone()),
             dependencies: dependency_repository::DependencyRepository::new(pool.clone()),
             recurring: recurring_repository::RecurringRepository::new(pool.clone()),
+            task_configs: task_config_repository::TaskConfigRepository::new(pool.clone()),
             pool,
         }
     }
