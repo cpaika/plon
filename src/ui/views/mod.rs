@@ -10,3 +10,5 @@ pub mod map_view;
 pub mod timeline_view;
 pub mod dashboard_view;
 pub mod recurring_view;
+pub mod metadata_config_view;
+pub mod resource_view;

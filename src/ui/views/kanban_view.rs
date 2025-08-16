@@ -1,5 +1,8 @@
 use crate::domain::task::{Task, TaskStatus, Priority, SubTask};
+use crate::domain::comment::Comment;
 use crate::services::TaskService;
+use crate::ui::widgets::task_detail_modal::{TaskDetailModal, TaskAction};
+use crate::repository::comment_repository::CommentRepository;
 use eframe::egui::{self, Ui, Context, Response, Rect, Pos2, Vec2, Color32, Stroke, Rounding, FontId, Align, Layout, Sense, CursorIcon, Key};
 use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc, Duration, Weekday};
@@ -41,6 +44,10 @@ pub struct KanbanView {
     pub focused_card: Option<Uuid>,
     pub swimlane_config: SwimlaneConfig,
     pub tag_colors: HashMap<String, Color32>,
+    
+    // Task detail modal
+    pub task_detail_modal: TaskDetailModal,
+    pub comment_repository: Option<Arc<CommentRepository>>,
 }
 
 #[derive(Clone)]
@@ -447,6 +454,8 @@ impl KanbanView {
                 lane_order: Vec::new(),
             },
             tag_colors: HashMap::new(),
+            task_detail_modal: TaskDetailModal::new(),
+            comment_repository: None,
         }
     }
 
@@ -466,6 +475,61 @@ impl KanbanView {
 
         self.handle_drag_drop(ui.ctx());
         self.update_animations(ui.ctx().input(|i| i.unstable_dt));
+        
+        // Show task detail modal
+        let resources = Vec::new(); // TODO: Get from context
+        if let Some(action) = self.task_detail_modal.show(ui.ctx(), &resources) {
+            match action {
+                TaskAction::Update(updated_task) => {
+                    // Update the task in the list
+                    if let Some(task) = tasks.iter_mut().find(|t| t.id == updated_task.id) {
+                        *task = updated_task;
+                    }
+                }
+                TaskAction::AddComment(comment) => {
+                    // Save comment to database
+                    if let Some(repo) = &self.comment_repository {
+                        let repo_clone = repo.clone();
+                        std::thread::spawn(move || {
+                            let runtime = tokio::runtime::Runtime::new().unwrap();
+                            runtime.block_on(async move {
+                                if let Err(e) = repo_clone.create(&comment).await {
+                                    eprintln!("Failed to save comment: {}", e);
+                                }
+                            });
+                        });
+                    }
+                }
+                TaskAction::UpdateComment(comment) => {
+                    // Update comment in database
+                    if let Some(repo) = &self.comment_repository {
+                        let repo_clone = repo.clone();
+                        std::thread::spawn(move || {
+                            let runtime = tokio::runtime::Runtime::new().unwrap();
+                            runtime.block_on(async move {
+                                if let Err(e) = repo_clone.update(&comment).await {
+                                    eprintln!("Failed to update comment: {}", e);
+                                }
+                            });
+                        });
+                    }
+                }
+                TaskAction::DeleteComment(id) => {
+                    // Delete comment from database
+                    if let Some(repo) = &self.comment_repository {
+                        let repo_clone = repo.clone();
+                        std::thread::spawn(move || {
+                            let runtime = tokio::runtime::Runtime::new().unwrap();
+                            runtime.block_on(async move {
+                                if let Err(e) = repo_clone.delete(id).await {
+                                    eprintln!("Failed to delete comment: {}", e);
+                                }
+                            });
+                        });
+                    }
+                }
+            }
+        }
     }
 
     fn show_header(&mut self, ui: &mut Ui) {
@@ -816,6 +880,22 @@ impl KanbanView {
         }
         
         if response.double_clicked() {
+            // Open task detail modal
+            let comments = if let Some(repo) = &self.comment_repository {
+                // Load comments for this task
+                let repo_clone = repo.clone();
+                let task_id = task.id;
+                std::thread::spawn(move || {
+                    let runtime = tokio::runtime::Runtime::new().unwrap();
+                    runtime.block_on(async move {
+                        repo_clone.list_for_entity(task_id).await.unwrap_or_default()
+                    })
+                }).join().unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            
+            self.task_detail_modal.open(task.clone(), comments);
             self.handle_card_double_click(task.id);
         }
         
@@ -1129,7 +1209,7 @@ impl KanbanView {
     }
 
     pub fn handle_card_double_click(&mut self, task_id: Uuid) {
-        // Open edit dialog
+        // Set focused card for visual feedback
         self.focused_card = Some(task_id);
     }
 

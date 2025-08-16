@@ -26,6 +26,7 @@ pub struct Task {
     pub subtasks: Vec<SubTask>,
     pub is_archived: bool,
     pub assignee: Option<String>,
+    pub configuration_id: Option<Uuid>, // Link to task configuration
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -87,6 +88,7 @@ impl Task {
             subtasks: Vec::new(),
             is_archived: false,
             assignee: None,
+            configuration_id: None,
         }
     }
     
