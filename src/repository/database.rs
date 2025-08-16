@@ -44,6 +44,18 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .execute(pool)
         .await?;
 
+    // Check if we've already run migrations by checking for a key table
+    let table_exists: (i32,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tasks'"
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if table_exists.0 > 0 {
+        // Database already initialized, skip migrations
+        return Ok(());
+    }
+
     // Read and execute migration files
     let migration_sql = include_str!("../../migrations/001_initial_schema.sql");
     
@@ -51,9 +63,14 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     for statement in migration_sql.split(';') {
         let trimmed = statement.trim();
         if !trimmed.is_empty() {
-            sqlx::query(trimmed)
-                .execute(pool)
-                .await?;
+            // Ignore errors for CREATE INDEX statements (in case they already exist)
+            if trimmed.starts_with("CREATE INDEX") {
+                let _ = sqlx::query(trimmed).execute(pool).await;
+            } else {
+                sqlx::query(trimmed)
+                    .execute(pool)
+                    .await?;
+            }
         }
     }
 

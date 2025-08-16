@@ -346,17 +346,21 @@ impl KanbanView {
     }
 
     fn show_board(&mut self, ui: &mut Ui, tasks: &[Task]) {
-        egui::ScrollArea::horizontal().show(ui, |ui| {
-            ui.horizontal(|ui| {
-                for column in self.columns.clone().iter() {
-                    if !column.visible {
-                        continue;
-                    }
+        egui::ScrollArea::horizontal()
+            .id_source("kanban_board_horizontal")
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 12.0; // Add spacing between columns
                     
-                    self.show_column(ui, column, tasks);
-                }
+                    for column in self.columns.clone().iter() {
+                        if !column.visible {
+                            continue;
+                        }
+                        
+                        self.show_column(ui, column, tasks);
+                    }
+                });
             });
-        });
     }
 
     fn show_column(&mut self, ui: &mut Ui, column: &KanbanColumn, tasks: &[Task]) {
@@ -370,40 +374,49 @@ impl KanbanView {
             false
         };
         
-        ui.vertical(|ui| {
-            ui.set_min_width(if column.collapsed { 50.0 } else { column.width });
-            ui.set_max_width(if column.collapsed { 50.0 } else { column.width });
-            
-            self.show_column_header(ui, column, column_tasks.len(), is_over_wip);
-            
-            if !column.collapsed {
-                ui.separator();
+        ui.group(|ui| {
+            ui.vertical(|ui| {
+                ui.set_min_width(if column.collapsed { 50.0 } else { column.width });
+                ui.set_max_width(if column.collapsed { 50.0 } else { column.width });
                 
-                egui::ScrollArea::vertical()
-                    .max_height(600.0)
-                    .show(ui, |ui| {
-                        let drop_target = ui.allocate_response(
-                            Vec2::new(column.width - 10.0, 10.0),
-                            Sense::hover()
-                        );
-                        
-                        if self.is_dragging() && drop_target.hovered() {
-                            ui.painter().rect_filled(
-                                drop_target.rect,
-                                Rounding::same(4.0),
-                                Color32::from_rgba_premultiplied(100, 150, 255, 50)
+                // Column header with background
+                ui.group(|ui| {
+                    self.show_column_header(ui, column, column_tasks.len(), is_over_wip);
+                });
+                
+                if !column.collapsed {
+                    ui.add_space(4.0);
+                    
+                    egui::ScrollArea::vertical()
+                        .id_source(format!("column_scroll_{}", column.title))
+                        .max_height(600.0)
+                        .show(ui, |ui| {
+                            ui.set_min_width(column.width - 20.0);
+                            
+                            let drop_target = ui.allocate_response(
+                                Vec2::new(column.width - 10.0, 10.0),
+                                Sense::hover()
                             );
-                        }
-                        
-                        for task in column_tasks {
-                            self.show_enhanced_task_card(ui, task, column);
-                        }
-                        
-                        if self.quick_add_states.get(&column.title).map_or(false, |s| s.visible) {
-                            self.show_quick_add_form(ui, &column.title);
-                        }
-                    });
-            }
+                            
+                            if self.is_dragging() && drop_target.hovered() {
+                                ui.painter().rect_filled(
+                                    drop_target.rect,
+                                    Rounding::same(4.0),
+                                    Color32::from_rgba_premultiplied(100, 150, 255, 50)
+                                );
+                            }
+                            
+                            for task in column_tasks {
+                                self.show_enhanced_task_card(ui, task, column);
+                                ui.add_space(4.0);
+                            }
+                            
+                            if self.quick_add_states.get(&column.title).map_or(false, |s| s.visible) {
+                                self.show_quick_add_form(ui, &column.title);
+                            }
+                        });
+                }
+            });
         });
     }
 
@@ -415,27 +428,33 @@ impl KanbanView {
         };
         
         ui.horizontal(|ui| {
+            ui.set_max_width(if column.collapsed { 50.0 } else { column.width });
+            
             if ui.button(if column.collapsed { "▶" } else { "▼" }).clicked() {
                 self.toggle_column_collapse(&column.title);
             }
             
-            ui.colored_label(header_color, &column.title);
-            ui.label(format!("({})", task_count));
-            
-            if let Some(limit) = column.wip_limit {
-                let wip_text = format!("{}/{}", task_count, limit);
-                let wip_color = if task_count > limit {
-                    Color32::RED
-                } else if task_count == limit {
-                    Color32::YELLOW
-                } else {
-                    Color32::GREEN
-                };
-                ui.colored_label(wip_color, wip_text);
-            }
-            
-            if ui.small_button("➕").on_hover_text("Quick Add").clicked() {
-                self.show_quick_add(&column.title);
+            if !column.collapsed {
+                ui.colored_label(header_color, &column.title);
+                ui.label(format!("({})", task_count));
+                
+                if let Some(limit) = column.wip_limit {
+                    let wip_text = format!("{}/{}", task_count, limit);
+                    let wip_color = if task_count > limit {
+                        Color32::RED
+                    } else if task_count == limit {
+                        Color32::YELLOW
+                    } else {
+                        Color32::GREEN
+                    };
+                    ui.colored_label(wip_color, wip_text);
+                }
+                
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.small_button("➕").on_hover_text("Quick Add").clicked() {
+                        self.show_quick_add(&column.title);
+                    }
+                });
             }
         });
     }
@@ -607,14 +626,16 @@ impl KanbanView {
     fn show_with_swimlanes(&mut self, ui: &mut Ui, tasks: &[Task]) {
         let swimlanes = self.organize_into_swimlanes(tasks);
         
-        egui::ScrollArea::both().show(ui, |ui| {
-            for (lane_name, lane_tasks) in swimlanes {
-                ui.collapsing(&lane_name, |ui| {
-                    self.show_board(ui, &lane_tasks);
-                });
-                ui.separator();
-            }
-        });
+        egui::ScrollArea::both()
+            .id_source("kanban_swimlanes")
+            .show(ui, |ui| {
+                for (lane_name, lane_tasks) in swimlanes {
+                    ui.collapsing(&lane_name, |ui| {
+                        self.show_board(ui, &lane_tasks);
+                    });
+                    ui.separator();
+                }
+            });
     }
 
     fn show_quick_add_form(&mut self, ui: &mut Ui, column_title: &str) {
