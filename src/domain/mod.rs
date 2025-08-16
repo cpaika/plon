@@ -5,6 +5,7 @@ pub mod comment;
 pub mod metadata;
 pub mod dependency;
 pub mod recurring;
+pub mod task_config;
 
 #[cfg(test)]
 mod recurring_tests;

@@ -4,6 +4,7 @@ mod resource_service;
 mod recurring_service;
 mod dependency_service;
 mod scheduler;
+mod task_config_service;
 pub mod summarization;
 
 pub use task_service::TaskService;
@@ -12,3 +13,4 @@ pub use resource_service::ResourceService;
 pub use recurring_service::RecurringService;
 pub use dependency_service::DependencyService;
 pub use scheduler::RecurringTaskScheduler;
+pub use task_config_service::TaskConfigService;

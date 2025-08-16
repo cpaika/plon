@@ -1,6 +1,6 @@
 use crate::domain::{task::Task, goal::Goal, resource::Resource};
 use crate::repository::Repository;
-use crate::services::{TaskService, GoalService, ResourceService};
+use crate::services::{TaskService, GoalService, ResourceService, TaskConfigService};
 use eframe::egui::{self, Context, Ui};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -11,6 +11,7 @@ pub struct PlonApp {
     task_service: Arc<TaskService>,
     goal_service: Arc<GoalService>,
     resource_service: Arc<ResourceService>,
+    task_config_service: Arc<TaskConfigService>,
     
     // UI State
     current_view: ViewType,
@@ -26,6 +27,7 @@ pub struct PlonApp {
     timeline_view: super::views::timeline_view::TimelineView,
     dashboard_view: super::views::dashboard_view::DashboardView,
     recurring_view: super::views::recurring_view::RecurringView,
+    metadata_config_view: super::views::metadata_config_view::MetadataConfigView,
     
     // Cache
     tasks: Vec<Task>,
@@ -44,6 +46,7 @@ pub enum ViewType {
     Timeline,
     Dashboard,
     Recurring,
+    MetadataConfig,
 }
 
 impl PlonApp {
@@ -60,12 +63,14 @@ impl PlonApp {
         let task_service = Arc::new(TaskService::new(repository.clone()));
         let goal_service = Arc::new(GoalService::new(repository.clone()));
         let resource_service = Arc::new(ResourceService::new(repository.clone()));
+        let task_config_service = Arc::new(TaskConfigService::new(repository.clone()));
         
         let mut app = Self {
             repository: repository.clone(),
             task_service: task_service.clone(),
             goal_service: goal_service.clone(),
             resource_service: resource_service.clone(),
+            task_config_service: task_config_service.clone(),
             
             current_view: ViewType::Map,
             selected_task_id: None,
@@ -79,6 +84,7 @@ impl PlonApp {
             timeline_view: super::views::timeline_view::TimelineView::new(),
             dashboard_view: super::views::dashboard_view::DashboardView::new(),
             recurring_view: super::views::recurring_view::RecurringView::new(),
+            metadata_config_view: super::views::metadata_config_view::MetadataConfigView::new(),
             
             tasks: Vec::new(),
             goals: Vec::new(),
@@ -127,6 +133,7 @@ impl PlonApp {
                 ui.selectable_value(&mut self.current_view, ViewType::Timeline, "📅 Timeline");
                 ui.selectable_value(&mut self.current_view, ViewType::Dashboard, "📈 Dashboard");
                 ui.selectable_value(&mut self.current_view, ViewType::Recurring, "🔄 Recurring");
+                ui.selectable_value(&mut self.current_view, ViewType::MetadataConfig, "⚙️ Metadata");
                 
                 ui.separator();
                 
@@ -181,6 +188,9 @@ impl PlonApp {
                 }
                 ViewType::Recurring => {
                     self.recurring_view.show(ui, None);
+                }
+                ViewType::MetadataConfig => {
+                    self.metadata_config_view.show(ui, Some(self.task_config_service.clone()));
                 }
             }
         });
