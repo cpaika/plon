@@ -1015,7 +1015,7 @@ impl MapView {
     
     pub fn auto_arrange_smart(&mut self, tasks: &mut [Task], goals: &mut [Goal]) {
         use std::collections::{HashMap, VecDeque};
-        use petgraph::algo::toposort;
+        
         
         let spacing_x = 250.0;
         let spacing_y = 150.0;
@@ -1131,7 +1131,7 @@ impl MapView {
         sorted_groups.sort_by_key(|(key, _)| key.as_str());
         
         for (group_key, task_indices) in sorted_groups {
-            let mut y = 0.0;
+            let y = 0.0;
             let items_per_column = 5;
             
             for (j, &idx) in task_indices.iter().enumerate() {

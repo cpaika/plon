@@ -235,22 +235,31 @@ impl KanbanView {
     }
 
     pub fn update_drag_with_animation(&mut self, position: Pos2) {
+        // Calculate values before borrowing drag_state
+        let hover_column = self.get_column_at_position(position);
+        let hover_position = hover_column.and_then(|col_idx| {
+            self.calculate_hover_position(col_idx, position.y)
+        });
+        
+        let mut animation_info = None;
+        
         if let Some(state) = &mut self.drag_state {
             let old_hover = (state.hover_column, state.hover_position);
             
             state.current_position = position;
-            state.hover_column = self.get_column_at_position(position);
+            state.hover_column = hover_column;
+            state.hover_position = hover_position;
             
-            // Calculate hover position within column
-            if let Some(col_idx) = state.hover_column {
-                state.hover_position = self.calculate_hover_position(col_idx, position.y);
-                
-                // Trigger animation for gap opening
-                let new_hover = (state.hover_column, state.hover_position);
-                if old_hover != new_hover {
-                    self.animate_gap_change(old_hover, new_hover, state.task_id);
-                }
+            // Store animation info to trigger after borrow ends
+            let new_hover = (hover_column, hover_position);
+            if old_hover != new_hover {
+                animation_info = Some((old_hover, new_hover, state.task_id));
             }
+        }
+        
+        // Trigger animation after mutable borrow of drag_state ends
+        if let Some((old_hover, new_hover, task_id)) = animation_info {
+            self.animate_gap_change(old_hover, new_hover, task_id);
         }
     }
 
@@ -448,23 +457,35 @@ impl KanbanView {
     }
 
     pub fn set_hover_insert_position(&mut self, column: usize, position: usize) {
+        let mut animation_info = None;
+        
         if let Some(state) = &mut self.drag_state {
             let old_hover = (state.hover_column, state.hover_position);
             state.hover_column = Some(column);
             state.hover_position = Some(position);
             
             let new_hover = (Some(column), Some(position));
-            self.animate_gap_change(old_hover, new_hover, state.task_id);
+            animation_info = Some((old_hover, new_hover, state.task_id));
+        }
+        
+        if let Some((old_hover, new_hover, task_id)) = animation_info {
+            self.animate_gap_change(old_hover, new_hover, task_id);
         }
     }
 
     pub fn clear_hover_insert_position(&mut self) {
+        let mut animation_info = None;
+        
         if let Some(state) = &mut self.drag_state {
             let old_hover = (state.hover_column, state.hover_position);
             state.hover_column = None;
             state.hover_position = None;
             
-            self.animate_gap_change(old_hover, (None, None), state.task_id);
+            animation_info = Some((old_hover, state.task_id));
+        }
+        
+        if let Some((old_hover, task_id)) = animation_info {
+            self.animate_gap_change(old_hover, (None, None), task_id);
         }
     }
 
@@ -947,20 +968,26 @@ impl KanbanView {
         self.tasks = tasks.clone();
         
         // Sync task positions if needed
+        let mut tasks_to_add = Vec::new();
         for task in &self.tasks {
             let task_in_column = self.columns.iter()
                 .any(|col| col.task_order.contains(&task.id));
             
             if !task_in_column {
-                for column in self.columns.iter_mut() {
-                    if column.status == task.status {
-                        let order = column.task_order.len();
-                        column.task_order.push(task.id);
-                        if let Some(t) = self.tasks.iter_mut().find(|t| t.id == task.id) {
-                            t.metadata.insert("kanban_order".to_string(), order.to_string());
-                        }
-                        break;
+                tasks_to_add.push((task.id, task.status));
+            }
+        }
+        
+        // Add tasks to appropriate columns
+        for (task_id, status) in tasks_to_add {
+            for column in self.columns.iter_mut() {
+                if column.status == status {
+                    let order = column.task_order.len();
+                    column.task_order.push(task_id);
+                    if let Some(t) = self.tasks.iter_mut().find(|t| t.id == task_id) {
+                        t.metadata.insert("kanban_order".to_string(), order.to_string());
                     }
+                    break;
                 }
             }
         }

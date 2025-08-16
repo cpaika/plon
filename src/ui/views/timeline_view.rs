@@ -293,7 +293,7 @@ impl TimelineView {
         // Use a stable ID for the ScrollArea to maintain state across frames
         ScrollArea::both()
             .id_source("timeline_view_scroll")
-            .auto_shrink([false, false])
+            .auto_shrink([true, true])  // Allow shrinking to prevent infinite scroll
             .show(ui, |ui| {
                 match self.selected_view {
                     TimelineViewMode::Gantt => {
@@ -327,8 +327,9 @@ impl TimelineView {
         let day_width = 25.0 * self.zoom_level;
         let label_width = 200.0;
         
-        let chart_width = label_width + (self.days_to_show as f32 * day_width);
-        let chart_height = filtered_tasks.len() as f32 * row_height + 50.0;
+        // Limit chart dimensions to reasonable values
+        let chart_width = (label_width + (self.days_to_show as f32 * day_width)).min(5000.0);
+        let chart_height = (filtered_tasks.len() as f32 * row_height + 50.0).min(3000.0);
         
         let (response, painter) = ui.allocate_painter(
             Vec2::new(chart_width, chart_height),

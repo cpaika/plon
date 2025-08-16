@@ -1,7 +1,6 @@
 use crate::domain::goal::{Goal, GoalStatus};
-use chrono::{Utc, Duration};
+use chrono::Utc;
 use eframe::egui::{self, Ui, ScrollArea, Color32, RichText};
-use std::collections::HashMap;
 use uuid::Uuid;
 
 pub struct GoalView {
@@ -10,6 +9,7 @@ pub struct GoalView {
     pub selected_goal_id: Option<Uuid>,
     pub selected_parent_id: Option<Uuid>,
     pub show_archived: bool,
+    pub show_create_form: bool,
     pub editing_goal_id: Option<Uuid>,
     pub edit_title: String,
     pub edit_description: String,
@@ -40,6 +40,7 @@ impl GoalView {
             selected_goal_id: None,
             selected_parent_id: None,
             show_archived: false,
+            show_create_form: false,
             editing_goal_id: None,
             edit_title: String::new(),
             edit_description: String::new(),
@@ -65,6 +66,13 @@ impl GoalView {
 
         // Top toolbar
         ui.horizontal(|ui| {
+            // Prominent Add Goal button
+            if ui.button("➕ New Goal").clicked() {
+                self.show_create_form = !self.show_create_form;
+            }
+            
+            ui.separator();
+            
             // Search bar
             ui.label("🔍");
             if ui.text_edit_singleline(&mut self.search_query).changed() {
@@ -98,8 +106,10 @@ impl GoalView {
 
         ui.separator();
 
-        // Create new goal form
-        ui.collapsing("➕ Create New Goal", |ui| {
+        // Create new goal form (now toggleable with the button)
+        if self.show_create_form {
+            ui.group(|ui| {
+                ui.heading("Create New Goal");
             ui.horizontal(|ui| {
                 ui.label("Title:");
                 ui.text_edit_singleline(&mut self.new_goal_title);
@@ -135,21 +145,24 @@ impl GoalView {
                     });
             });
 
-            ui.horizontal(|ui| {
-                if ui.button("✅ Create Goal").clicked() && self.is_form_valid() {
-                    action = Some(GoalAction::Create {
-                        title: self.new_goal_title.clone(),
-                        description: self.new_goal_description.clone(),
-                        parent_id: self.selected_parent_id,
-                    });
-                    self.clear_form();
-                }
+                ui.horizontal(|ui| {
+                    if ui.button("✅ Create Goal").clicked() && self.is_form_valid() {
+                        action = Some(GoalAction::Create {
+                            title: self.new_goal_title.clone(),
+                            description: self.new_goal_description.clone(),
+                            parent_id: self.selected_parent_id,
+                        });
+                        self.clear_form();
+                        self.show_create_form = false; // Close the form after creation
+                    }
 
-                if ui.button("❌ Cancel").clicked() {
-                    self.clear_form();
-                }
+                    if ui.button("❌ Cancel").clicked() {
+                        self.clear_form();
+                        self.show_create_form = false; // Close the form on cancel
+                    }
+                });
             });
-        });
+        }
 
         ui.separator();
 
