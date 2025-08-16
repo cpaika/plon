@@ -81,7 +81,11 @@ mockall = "0.12"
 [dev-dependencies]
 criterion = "0.5"  # For benchmarking
 tempfile = "3.8"  # For test databases
-fake = "2.9"  # For generating test data
 rstest = "0.18"  # For parameterized tests
 futures = "0.3"  # For async utilities in tests
+rand = "0.8"  # For random number generation in benchmarks
+
+[[bench]]
+name = "performance_benchmark"
+harness = false
 

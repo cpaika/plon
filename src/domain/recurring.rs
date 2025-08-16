@@ -109,6 +109,7 @@ impl RecurringTaskTemplate {
         task.metadata = self.metadata.clone();
         task.assigned_resource_id = self.assigned_resource_id;
         task.estimated_hours = self.estimated_hours;
+        task.configuration_id = None; // Recurring tasks don't have a specific configuration
         
         if let Some(next) = self.next_occurrence {
             task.scheduled_date = Some(next);
