@@ -39,12 +39,12 @@ pub struct TimelineView {
     scheduler: TimelineScheduler,
     
     // State management to prevent jumping
-    scroll_offset_x: f32,
-    scroll_offset_y: f32,
-    cached_schedule: Option<TimelineSchedule>,
-    last_task_count: usize,
-    zoom_level: f32,
-    selected_task_id: Option<Uuid>,
+    pub scroll_offset_x: f32,
+    pub scroll_offset_y: f32,
+    pub cached_schedule: Option<TimelineSchedule>,
+    pub last_task_count: usize,
+    pub zoom_level: f32,
+    pub selected_task_id: Option<Uuid>,
 }
 
 impl Default for TimelineView {
@@ -88,23 +88,25 @@ impl TimelineView {
     pub fn set_date_range(&mut self, days: i64) {
         let new_days = days.max(7).min(365);
         
-        // Adjust scroll position proportionally when zooming
+        // Update zoom level for content scaling
         let zoom_factor = new_days as f32 / self.days_to_show as f32;
-        self.scroll_offset_x *= zoom_factor;
+        self.zoom_level *= zoom_factor;
         
         self.days_to_show = new_days;
         self.gantt_chart.set_days_to_show(self.days_to_show);
     }
     
     pub fn scroll_to_today(&mut self) {
+        // Note: With ScrollArea managing its own state, we can't directly
+        // control scroll position. This would need a different approach
+        // such as centering the view around today's date in the content itself
         let today = Local::now().naive_local().date();
-        let days_from_start = (today - self.start_date).num_days();
-        self.scroll_offset_x = (days_from_start as f32 * 30.0).max(0.0);
+        self.start_date = today - chrono::Duration::days(7); // Show a week before today
     }
     
     pub fn reset_view(&mut self) {
-        self.scroll_offset_x = 0.0;
-        self.scroll_offset_y = 0.0;
+        // Reset view parameters but not scroll position 
+        // (ScrollArea manages that internally)
         self.zoom_level = 1.0;
         self.days_to_show = 30;
         self.start_date = Local::now().naive_local().date();
@@ -253,15 +255,10 @@ impl TimelineView {
             
             ui.separator();
             
-            // Navigation buttons
-            if ui.button("⬅").clicked() {
-                self.scroll_offset_x = (self.scroll_offset_x - 100.0).max(0.0);
-            }
+            // Navigation buttons - removed manual scroll manipulation
+            // The ScrollArea now maintains its own state automatically
             if ui.button("Today").clicked() {
                 self.scroll_to_today();
-            }
-            if ui.button("➡").clicked() {
-                self.scroll_offset_x += 100.0;
             }
             
             if ui.button("Reset").clicked() {
@@ -293,15 +290,11 @@ impl TimelineView {
         ui.separator();
         
         // Main content area with preserved scroll position
+        // Use a stable ID for the ScrollArea to maintain state across frames
         ScrollArea::both()
+            .id_source("timeline_view_scroll")
             .auto_shrink([false, false])
-            .scroll_offset(Vec2::new(self.scroll_offset_x, self.scroll_offset_y))
             .show(ui, |ui| {
-                // Store scroll position for next frame
-                let scroll_delta = ui.input(|i| i.scroll_delta);
-                self.scroll_offset_x = (self.scroll_offset_x - scroll_delta.x).max(0.0);
-                self.scroll_offset_y = (self.scroll_offset_y - scroll_delta.y).max(0.0);
-                
                 match self.selected_view {
                     TimelineViewMode::Gantt => {
                         self.show_gantt_view(ui, tasks, goals);
