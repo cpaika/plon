@@ -21,7 +21,7 @@ pub struct PlonApp {
     
     // View components
     pub(crate) list_view: super::views::list_view::ListView,
-    pub(crate) kanban_view: super::views::kanban_view_improved::KanbanView,
+    pub(crate) kanban_view: super::views::kanban_view_enhanced::KanbanView,
     pub(crate) map_view: super::views::map_view::MapView,
     pub(crate) timeline_view: super::views::timeline_view::TimelineView,
     pub(crate) dashboard_view: super::views::dashboard_view::DashboardView,
@@ -84,7 +84,7 @@ impl PlonApp {
             show_goal_editor: false,
             
             list_view: super::views::list_view::ListView::new(),
-            kanban_view: super::views::kanban_view_improved::KanbanView::new(),
+            kanban_view: super::views::kanban_view_enhanced::KanbanView::new(),
             map_view: super::views::map_view::MapView::new(),
             timeline_view: super::views::timeline_view::TimelineView::new(),
             dashboard_view: super::views::dashboard_view::DashboardView::new(),
