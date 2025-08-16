@@ -1,12 +1,13 @@
 use crate::domain::{task::Task, resource::Resource, dependency::Dependency};
-use crate::ui::widgets::gantt_chart::GanttChart;
-use chrono::{NaiveDate, Duration, Local, Datelike};
-use eframe::egui::{self, Color32, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, RichText, FontId};
+use crate::ui::widgets::gantt_chart::{GanttChart, InteractiveGanttChart, DragOperation};
+use chrono::{NaiveDate, Duration, Local, Datelike, Utc};
+use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2, FontId, CursorIcon};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 pub struct GanttView {
     gantt_chart: GanttChart,
+    interactive_chart: InteractiveGanttChart,
     scroll_offset: f32,
     selected_task_id: Option<Uuid>,
     show_grid: bool,
@@ -23,6 +24,7 @@ impl GanttView {
     pub fn new() -> Self {
         Self {
             gantt_chart: GanttChart::new(),
+            interactive_chart: InteractiveGanttChart::new(),
             scroll_offset: 0.0,
             selected_task_id: None,
             show_grid: true,
@@ -36,7 +38,8 @@ impl GanttView {
         }
     }
 
-    pub fn show(&mut self, ui: &mut Ui, tasks: &[Task], resources: &[Resource], dependencies: &[Dependency]) {
+    pub fn show(&mut self, ui: &mut Ui, tasks: &mut [Task], resources: &[Resource], dependencies: &[Dependency]) -> bool {
+        let mut tasks_modified = false;
         // Top toolbar
         ui.horizontal(|ui| {
             ui.heading("📊 Gantt Chart");
@@ -106,16 +109,19 @@ impl GanttView {
         egui::ScrollArea::both()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                self.render_gantt(ui, tasks, resources, dependencies);
+                tasks_modified = self.render_gantt(ui, tasks, resources, dependencies);
             });
+        
+        tasks_modified
     }
     
-    fn render_gantt(&mut self, ui: &mut Ui, tasks: &[Task], resources: &[Resource], dependencies: &[Dependency]) {
+    fn render_gantt(&mut self, ui: &mut Ui, tasks: &mut [Task], resources: &[Resource], dependencies: &[Dependency]) -> bool {
+        let mut tasks_modified = false;
         let start_date = self.gantt_chart.get_start_date();
         let days_to_show = self.gantt_chart.days_to_show;
         
-        // Filter tasks
-        let filtered_tasks: Vec<&Task> = tasks.iter()
+        // Filter tasks - collect IDs first to avoid borrow issues
+        let filtered_task_ids: Vec<Uuid> = tasks.iter()
             .filter(|task| {
                 if let Some(resource_id) = self.filter_by_resource {
                     task.assigned_resource_id == Some(resource_id)
@@ -123,6 +129,13 @@ impl GanttView {
                     true
                 }
             })
+            .map(|task| task.id)
+            .collect();
+        
+        // Create a temporary vec for display purposes
+        let filtered_tasks: Vec<Task> = tasks.iter()
+            .filter(|task| filtered_task_ids.contains(&task.id))
+            .cloned()
             .collect();
         
         // Calculate dimensions
@@ -157,22 +170,134 @@ impl GanttView {
             self.draw_today_line(&painter, rect, start_date, ui);
         }
         
+        // Track task rectangles for interaction
+        let mut task_rects: HashMap<Uuid, Rect> = HashMap::new();
+        
         // Draw tasks
         for (index, task) in filtered_tasks.iter().enumerate() {
-            self.draw_task_row(&painter, rect, task, index, start_date, resources, ui);
+            let task_rect = self.draw_task_row(&painter, rect, task, index, start_date, resources, ui);
+            if let Some(bar_rect) = task_rect {
+                task_rects.insert(task.id, bar_rect);
+            }
         }
         
         // Draw dependencies
         if self.gantt_chart.show_dependencies {
-            self.draw_dependencies(&painter, rect, &filtered_tasks, dependencies, start_date, ui);
+            let filtered_task_refs: Vec<&Task> = filtered_tasks.iter().collect();
+            self.draw_dependencies(&painter, rect, &filtered_task_refs, dependencies, start_date, ui);
         }
         
-        // Handle interactions
-        if response.clicked() {
-            if let Some(pos) = response.interact_pointer_pos() {
-                self.handle_click(pos, rect, &filtered_tasks);
+        // Handle hover and cursor changes
+        if let Some(hover_pos) = response.hover_pos() {
+            let mut cursor_set = false;
+            for (task_id, task_rect) in &task_rects {
+                if self.interactive_chart.update_hover(hover_pos, *task_id, *task_rect) {
+                    if let Some(cursor) = self.interactive_chart.get_hover_cursor(hover_pos, *task_rect) {
+                        ui.ctx().set_cursor_icon(cursor);
+                        cursor_set = true;
+                    }
+                    break;
+                }
+            }
+            if !cursor_set {
+                ui.ctx().set_cursor_icon(CursorIcon::Default);
             }
         }
+        
+        // Handle drag operations
+        if response.drag_started() {
+            if let Some(pos) = response.interact_pointer_pos() {
+                // Find which task was clicked and where
+                for (task_id, task_rect) in &task_rects {
+                    if task_rect.contains(pos) {
+                        // Find the corresponding task
+                        if let Some(task) = tasks.iter().find(|t| t.id == *task_id) {
+                            if let (Some(start_date_time), Some(end_date_time)) = (task.scheduled_date, task.due_date) {
+                                let task_start = start_date_time.naive_local().date();
+                                let task_end = end_date_time.naive_local().date();
+                                
+                                // Determine drag operation type
+                                if self.interactive_chart.is_near_left_handle(pos, *task_rect) {
+                                    self.interactive_chart.start_drag(DragOperation::ResizeStart {
+                                        task_id: *task_id,
+                                        initial_start: task_start,
+                                        initial_end: task_end,
+                                        drag_start_pos: pos,
+                                    });
+                                } else if self.interactive_chart.is_near_right_handle(pos, *task_rect) {
+                                    self.interactive_chart.start_drag(DragOperation::ResizeEnd {
+                                        task_id: *task_id,
+                                        initial_start: task_start,
+                                        initial_end: task_end,
+                                        drag_start_pos: pos,
+                                    });
+                                } else {
+                                    self.interactive_chart.start_drag(DragOperation::Reschedule {
+                                        task_id: *task_id,
+                                        initial_start: task_start,
+                                        initial_end: task_end,
+                                        drag_start_pos: pos,
+                                    });
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Update drag position and draw preview
+        if self.interactive_chart.is_dragging() && response.dragged() {
+            if let Some(pos) = response.interact_pointer_pos() {
+                let (preview_start, preview_end) = self.interactive_chart.update_drag(pos, start_date, self.column_width);
+                
+                // Draw preview of new position
+                if let Some(dragging_task_id) = self.interactive_chart.get_dragging_task_id() {
+                    // Find the task index
+                    if let Some(task_index) = filtered_tasks.iter().position(|t| t.id == dragging_task_id) {
+                        let preview_style = self.interactive_chart.get_drag_preview_style();
+                        self.draw_task_preview(&painter, rect, preview_start, preview_end, task_index, preview_style);
+                    }
+                }
+            }
+        }
+        
+        // Complete drag operation
+        if response.drag_released() && self.interactive_chart.is_dragging() {
+            if let Some(pos) = response.interact_pointer_pos() {
+                if let Some((task_id, new_start, new_end)) = self.interactive_chart.complete_drag(pos, start_date, self.column_width) {
+                    // Update the task with new dates
+                    if let Some(task) = tasks.iter_mut().find(|t| t.id == task_id) {
+                        task.scheduled_date = Some(chrono::DateTime::from_naive_utc_and_offset(
+                            new_start.and_hms_opt(0, 0, 0).unwrap(),
+                            Utc,
+                        ));
+                        task.due_date = Some(chrono::DateTime::from_naive_utc_and_offset(
+                            new_end.and_hms_opt(23, 59, 59).unwrap(),
+                            Utc,
+                        ));
+                        task.updated_at = Utc::now();
+                        tasks_modified = true;
+                    }
+                }
+            }
+        }
+        
+        // Handle regular click (selection)
+        if response.clicked() && !self.interactive_chart.is_dragging() {
+            if let Some(pos) = response.interact_pointer_pos() {
+                let filtered_task_refs: Vec<&Task> = filtered_tasks.iter().collect();
+                self.handle_click(pos, rect, &filtered_task_refs);
+            }
+        }
+        
+        // Cancel drag on escape
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) && self.interactive_chart.is_dragging() {
+            self.interactive_chart.cancel_drag();
+        }
+        
+        tasks_modified
     }
     
     fn draw_header(&self, painter: &egui::Painter, rect: Rect, start_date: NaiveDate, days: i64, ui: &Ui) {
@@ -303,7 +428,7 @@ impl GanttView {
         }
     }
     
-    fn draw_task_row(&self, painter: &egui::Painter, rect: Rect, task: &Task, row: usize, start_date: NaiveDate, resources: &[Resource], ui: &Ui) {
+    fn draw_task_row(&self, painter: &egui::Painter, rect: Rect, task: &Task, row: usize, start_date: NaiveDate, resources: &[Resource], ui: &Ui) -> Option<Rect> {
         let y = rect.min.y + self.header_height + (row as f32 * self.row_height);
         
         // Draw task name
@@ -396,11 +521,62 @@ impl GanttView {
                     painter.rect_filled(progress_rect, 2.0, color.gamma_multiply(1.3));
                 }
                 
-                // Draw border if selected
+                // Draw border if selected or hovering
                 if Some(task.id) == self.selected_task_id {
                     painter.rect_stroke(bar_rect, 2.0, Stroke::new(2.0, Color32::WHITE));
+                } else if Some(task.id) == self.interactive_chart.hovered_task_id {
+                    painter.rect_stroke(bar_rect, 2.0, Stroke::new(1.0, Color32::from_rgb(100, 100, 255)));
                 }
+                
+                // Draw resize handles when hovering
+                if Some(task.id) == self.interactive_chart.hovered_task_id {
+                    // Left handle
+                    painter.circle_filled(
+                        Pos2::new(bar_rect.min.x, bar_rect.center().y),
+                        3.0,
+                        Color32::WHITE,
+                    );
+                    // Right handle
+                    painter.circle_filled(
+                        Pos2::new(bar_rect.max.x, bar_rect.center().y),
+                        3.0,
+                        Color32::WHITE,
+                    );
+                }
+                
+                return Some(bar_rect);
             }
+        }
+        None
+    }
+    
+    fn draw_task_preview(&self, painter: &egui::Painter, rect: Rect, start: NaiveDate, end: NaiveDate, row: usize, style: crate::ui::widgets::gantt_chart::DragPreviewStyle) {
+        let y = rect.min.y + self.header_height + (row as f32 * self.row_height);
+        let chart_start = self.gantt_chart.get_start_date();
+        
+        let days_from_chart_start = (start - chart_start).num_days();
+        let duration = (end - start).num_days() + 1;
+        
+        if days_from_chart_start < self.gantt_chart.days_to_show && days_from_chart_start + duration > 0 {
+            let bar_start = days_from_chart_start.max(0);
+            let bar_end = (days_from_chart_start + duration).min(self.gantt_chart.days_to_show);
+            let bar_duration = bar_end - bar_start;
+            
+            let x = rect.min.x + 300.0 + (bar_start as f32 * self.column_width);
+            let width = bar_duration as f32 * self.column_width;
+            
+            let preview_rect = Rect::from_min_size(
+                Pos2::new(x, y + 5.0),
+                Vec2::new(width, self.row_height - 10.0),
+            );
+            
+            // Draw semi-transparent preview
+            painter.rect(
+                preview_rect,
+                2.0,
+                style.fill_color,
+                Stroke::new(2.0, style.stroke_color),
+            );
         }
     }
     

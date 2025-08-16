@@ -1,7 +1,7 @@
 use crate::domain::{task::Task, resource::Resource};
 use crate::services::timeline_scheduler::{TaskSchedule, TimelineSchedule};
-use chrono::{NaiveDate, Datelike, Local};
-use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use chrono::{NaiveDate, Datelike, Local, Duration};
+use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2, CursorIcon};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -70,6 +70,229 @@ pub struct GanttChart {
     start_date: NaiveDate,
     critical_path: HashSet<Uuid>,
     milestones: Vec<Milestone>,
+}
+
+#[derive(Debug, Clone)]
+pub enum DragOperation {
+    Reschedule {
+        task_id: Uuid,
+        initial_start: NaiveDate,
+        initial_end: NaiveDate,
+        drag_start_pos: Pos2,
+    },
+    ResizeStart {
+        task_id: Uuid,
+        initial_start: NaiveDate,
+        initial_end: NaiveDate,
+        drag_start_pos: Pos2,
+    },
+    ResizeEnd {
+        task_id: Uuid,
+        initial_start: NaiveDate,
+        initial_end: NaiveDate,
+        drag_start_pos: Pos2,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct DragPreviewStyle {
+    pub opacity: f32,
+    pub stroke_color: Color32,
+    pub fill_color: Color32,
+}
+
+pub struct InteractiveGanttChart {
+    pub current_drag_operation: Option<DragOperation>,
+    pub hovered_task_id: Option<Uuid>,
+    pub selected_task_id: Option<Uuid>,
+    selected_tasks: HashSet<Uuid>,
+    min_date: Option<NaiveDate>,
+    max_date: Option<NaiveDate>,
+    snap_to_grid: bool,
+    handle_detection_threshold: f32,
+}
+
+impl InteractiveGanttChart {
+    pub fn new() -> Self {
+        Self {
+            current_drag_operation: None,
+            hovered_task_id: None,
+            selected_task_id: None,
+            selected_tasks: HashSet::new(),
+            min_date: None,
+            max_date: None,
+            snap_to_grid: true,
+            handle_detection_threshold: 5.0,
+        }
+    }
+    
+    pub fn start_drag(&mut self, operation: DragOperation) {
+        self.current_drag_operation = Some(operation);
+    }
+    
+    pub fn update_drag(&mut self, current_pos: Pos2, chart_start: NaiveDate, column_width: f32) -> (NaiveDate, NaiveDate) {
+        if let Some(ref operation) = self.current_drag_operation {
+            match operation {
+                DragOperation::Reschedule { initial_start, initial_end, drag_start_pos, .. } => {
+                    let delta_pixels = current_pos.x - drag_start_pos.x;
+                    let delta_days = (delta_pixels / column_width).round() as i64;
+                    
+                    let new_start = *initial_start + Duration::days(delta_days);
+                    let new_end = *initial_end + Duration::days(delta_days);
+                    
+                    (self.constrain_date(new_start), self.constrain_date(new_end))
+                }
+                DragOperation::ResizeStart { initial_start, initial_end, drag_start_pos, .. } => {
+                    let delta_pixels = current_pos.x - drag_start_pos.x;
+                    let delta_days = (delta_pixels / column_width).round() as i64;
+                    
+                    let new_start = *initial_start + Duration::days(delta_days);
+                    let new_start = new_start.min(*initial_end); // Don't go past end
+                    
+                    (self.constrain_date(new_start), *initial_end)
+                }
+                DragOperation::ResizeEnd { initial_start, initial_end, drag_start_pos, .. } => {
+                    let delta_pixels = current_pos.x - drag_start_pos.x;
+                    let delta_days = (delta_pixels / column_width).round() as i64;
+                    
+                    let new_end = *initial_end + Duration::days(delta_days);
+                    let new_end = new_end.max(*initial_start); // Don't go before start
+                    
+                    (*initial_start, self.constrain_date(new_end))
+                }
+            }
+        } else {
+            (chart_start, chart_start)
+        }
+    }
+    
+    pub fn complete_drag(&mut self, final_pos: Pos2, chart_start: NaiveDate, column_width: f32) -> Option<(Uuid, NaiveDate, NaiveDate)> {
+        if self.current_drag_operation.is_some() {
+            let (new_start, new_end) = self.update_drag(final_pos, chart_start, column_width);
+            let task_id = match self.current_drag_operation.as_ref().unwrap() {
+                DragOperation::Reschedule { task_id, .. } |
+                DragOperation::ResizeStart { task_id, .. } |
+                DragOperation::ResizeEnd { task_id, .. } => *task_id,
+            };
+            
+            self.current_drag_operation = None;
+            Some((task_id, new_start, new_end))
+        } else {
+            None
+        }
+    }
+    
+    pub fn cancel_drag(&mut self) {
+        self.current_drag_operation = None;
+    }
+    
+    pub fn update_hover(&mut self, pos: Pos2, task_id: Uuid, task_rect: Rect) -> bool {
+        if task_rect.contains(pos) {
+            self.hovered_task_id = Some(task_id);
+            true
+        } else {
+            if self.hovered_task_id == Some(task_id) {
+                self.hovered_task_id = None;
+            }
+            false
+        }
+    }
+    
+    pub fn get_hover_cursor(&self, pos: Pos2, task_rect: Rect) -> Option<CursorIcon> {
+        if self.is_near_left_handle(pos, task_rect) || self.is_near_right_handle(pos, task_rect) {
+            Some(CursorIcon::ResizeHorizontal)
+        } else if task_rect.contains(pos) {
+            Some(CursorIcon::Move)
+        } else {
+            None
+        }
+    }
+    
+    pub fn is_near_left_handle(&self, pos: Pos2, rect: Rect) -> bool {
+        if !rect.contains(pos) {
+            return false;
+        }
+        (pos.x - rect.min.x).abs() <= self.handle_detection_threshold
+    }
+    
+    pub fn is_near_right_handle(&self, pos: Pos2, rect: Rect) -> bool {
+        if !rect.contains(pos) {
+            return false;
+        }
+        (pos.x - rect.max.x).abs() <= self.handle_detection_threshold
+    }
+    
+    pub fn is_dragging(&self) -> bool {
+        self.current_drag_operation.is_some()
+    }
+    
+    pub fn get_dragging_task_id(&self) -> Option<Uuid> {
+        self.current_drag_operation.as_ref().map(|op| match op {
+            DragOperation::Reschedule { task_id, .. } |
+            DragOperation::ResizeStart { task_id, .. } |
+            DragOperation::ResizeEnd { task_id, .. } => *task_id,
+        })
+    }
+    
+    pub fn get_drag_preview_style(&self) -> DragPreviewStyle {
+        DragPreviewStyle {
+            opacity: 0.6,
+            stroke_color: Color32::from_rgb(0, 120, 215),
+            fill_color: Color32::from_rgba_unmultiplied(0, 120, 215, 100),
+        }
+    }
+    
+    pub fn snap_to_grid(&self, pos: Pos2, column_width: f32) -> Pos2 {
+        if self.snap_to_grid {
+            let snapped_x = ((pos.x / column_width).round() * column_width);
+            Pos2::new(snapped_x, pos.y)
+        } else {
+            pos
+        }
+    }
+    
+    pub fn set_min_date(&mut self, date: NaiveDate) {
+        self.min_date = Some(date);
+    }
+    
+    pub fn set_max_date(&mut self, date: NaiveDate) {
+        self.max_date = Some(date);
+    }
+    
+    pub fn constrain_date(&self, date: NaiveDate) -> NaiveDate {
+        let mut constrained = date;
+        
+        if let Some(min) = self.min_date {
+            constrained = constrained.max(min);
+        }
+        
+        if let Some(max) = self.max_date {
+            constrained = constrained.min(max);
+        }
+        
+        constrained
+    }
+    
+    pub fn select_task(&mut self, task_id: Uuid, add_to_selection: bool) {
+        if add_to_selection {
+            self.selected_tasks.insert(task_id);
+        } else {
+            self.selected_tasks.clear();
+            self.selected_tasks.insert(task_id);
+        }
+        self.selected_task_id = Some(task_id);
+    }
+    
+    pub fn selected_tasks(&self) -> Vec<Uuid> {
+        self.selected_tasks.iter().copied().collect()
+    }
+    
+    pub fn batch_reschedule(&self, offset_days: i64) -> Vec<(Uuid, i64)> {
+        self.selected_tasks
+            .iter()
+            .map(|&task_id| (task_id, offset_days))
+            .collect()
+    }
 }
 
 impl Default for GanttChart {

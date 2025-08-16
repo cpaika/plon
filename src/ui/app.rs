@@ -199,7 +199,12 @@ impl PlonApp {
                     let dependencies = self.runtime.block_on(async {
                         self.repository.dependencies.list_all().await.unwrap_or_default()
                     });
-                    self.gantt_view.show(ui, &self.tasks, &self.resources, &dependencies);
+                    if self.gantt_view.show(ui, &mut self.tasks, &self.resources, &dependencies) {
+                        // Tasks were modified, save them
+                        for task in &self.tasks {
+                            let _ = self.runtime.block_on(self.repository.tasks.update(task));
+                        }
+                    }
                 }
                 ViewType::Dashboard => {
                     self.dashboard_view.show(ui, &self.tasks, &self.goals, &self.resources);
