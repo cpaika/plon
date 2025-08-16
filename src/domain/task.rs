@@ -24,12 +24,15 @@ pub struct Task {
     pub parent_task_id: Option<Uuid>,
     pub position: Position, // For map view
     pub subtasks: Vec<SubTask>,
+    pub is_archived: bool,
+    pub assignee: Option<String>,
     pub configuration_id: Option<Uuid>, // Link to task configuration
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SubTask {
     pub id: Uuid,
+    pub title: String,
     pub description: String,
     pub completed: bool,
     pub created_at: DateTime<Utc>,
@@ -83,13 +86,20 @@ impl Task {
             parent_task_id: None,
             position: Position { x: 0.0, y: 0.0 },
             subtasks: Vec::new(),
+            is_archived: false,
+            assignee: None,
             configuration_id: None,
         }
+    }
+    
+    pub fn new_simple(title: String) -> Self {
+        Self::new(title, String::new())
     }
 
     pub fn add_subtask(&mut self, description: String) -> Uuid {
         let subtask = SubTask {
             id: Uuid::new_v4(),
+            title: description.clone(),
             description,
             completed: false,
             created_at: Utc::now(),
