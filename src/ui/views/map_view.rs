@@ -1,5 +1,6 @@
 use crate::domain::{task::Task, goal::Goal, dependency::{Dependency, DependencyType, DependencyGraph}};
 use crate::services::summarization::{SummarizationService, SummaryCache};
+use crate::services::DependencyService;
 pub use crate::services::summarization::SummarizationLevel;
 use eframe::egui::{self, Color32, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 use std::collections::HashMap;
@@ -39,6 +40,7 @@ pub struct MapView {
     
     // Dependencies
     dependency_graph: DependencyGraph,
+    dependency_service: Option<Arc<DependencyService>>,
 }
 
 #[derive(Clone)]
@@ -103,10 +105,31 @@ impl MapView {
             dependency_source: None,
             dependency_preview_end: None,
             dependency_graph: DependencyGraph::new(),
+            dependency_service: None,
         }
     }
 
+    pub fn set_dependency_service(&mut self, service: Arc<DependencyService>) {
+        self.dependency_service = Some(service);
+    }
+    
     pub fn show(&mut self, ui: &mut Ui, tasks: &mut Vec<Task>, goals: &mut Vec<Goal>) {
+        // Load dependencies if we have a service (do this once per frame)
+        if let Some(service) = &self.dependency_service {
+            // Load dependencies from database
+            let service_clone = service.clone();
+            let graph = std::thread::spawn(move || {
+                let runtime = tokio::runtime::Runtime::new().unwrap();
+                runtime.block_on(async {
+                    service_clone.build_dependency_graph().await.ok()
+                })
+            }).join().unwrap();
+            
+            if let Some(graph) = graph {
+                self.dependency_graph = graph;
+            }
+        }
+        
         // Update detail level based on zoom
         let previous_detail = self.detail_level;
         self.detail_level = match self.zoom_level {
@@ -210,6 +233,37 @@ impl MapView {
 
         // Draw dependencies
         self.draw_dependencies(&painter, tasks, to_screen);
+        
+        // Draw dependency preview if creating
+        if self.creating_dependency {
+            if let (Some(source_id), Some(preview_end)) = (self.dependency_source, self.dependency_preview_end) {
+                // Find source task position
+                if let Some(source_task) = tasks.iter().find(|t| t.id == source_id) {
+                    let source_pos = Vec2::new(source_task.position.x as f32, source_task.position.y as f32);
+                    let source_screen = to_screen(source_pos);
+                    
+                    // Start from the right edge of the source task
+                    let task_width = 150.0 * self.zoom_level / 2.0;
+                    let arrow_start = source_screen + Vec2::new(task_width, 0.0);
+                    
+                    // Draw preview arrow
+                    painter.arrow(
+                        arrow_start,
+                        preview_end - arrow_start,
+                        Stroke::new(2.0, Color32::from_rgba_unmultiplied(100, 150, 255, 180))
+                    );
+                    
+                    // Draw helper text
+                    painter.text(
+                        preview_end + Vec2::new(10.0, -10.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        "Drop on left dot to create dependency\nRight-click or ESC to cancel",
+                        egui::FontId::proportional(12.0),
+                        Color32::from_rgb(100, 100, 100),
+                    );
+                }
+            }
+        }
 
         // Draw goals
         for goal in goals.iter_mut() {
@@ -237,13 +291,23 @@ impl MapView {
             }
         }
         
-        // Cancel dependency creation on escape or right click
-        // Note: For actual implementation, this would need mutable self
-        // if self.creating_dependency {
-        //     if ui.input(|i| i.key_pressed(egui::Key::Escape)) || response.secondary_clicked() {
-        //         self.cancel_dependency_creation();
-        //     }
-        // }
+        // Cancel dependency creation on escape
+        if self.creating_dependency {
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                self.cancel_dependency_creation();
+            }
+        }
+        
+        // Show help text
+        if !self.creating_dependency {
+            ui.ctx().debug_painter().text(
+                egui::Pos2::new(10.0, available_rect.bottom() - 30.0),
+                egui::Align2::LEFT_BOTTOM,
+                "Drag from the right dot of a task to its left dot to create a dependency",
+                egui::FontId::proportional(12.0),
+                Color32::from_rgba_unmultiplied(100, 100, 100, 180),
+            );
+        }
     }
 
     fn draw_grid(&self, painter: &egui::Painter, rect: Rect, to_screen: &impl Fn(Vec2) -> Pos2) {
@@ -284,6 +348,11 @@ impl MapView {
 
         let size = Vec2::new(150.0, 80.0) * self.zoom_level;
         let rect = Rect::from_center_size(screen_pos, size);
+        
+        // Connection points (dots on left and right)
+        let dot_radius = 6.0 * self.zoom_level;
+        let left_dot_pos = Pos2::new(rect.left(), rect.center().y);
+        let right_dot_pos = Pos2::new(rect.right(), rect.center().y);
         
         // Determine color based on status
         let fill_color = match task.status {
@@ -385,28 +454,111 @@ impl MapView {
             }
         }
         
-        // Handle interaction
-        let response = ui.allocate_rect(rect, Sense::click_and_drag());
+        // Draw connection dots
+        let dot_color = if self.creating_dependency && self.dependency_source == Some(task.id) {
+            Color32::from_rgb(100, 150, 255)  // Highlight when creating from this task
+        } else {
+            Color32::from_rgba_unmultiplied(100, 100, 100, 150)
+        };
         
-        if response.clicked() {
-            // Selected task (would need mutable self to update)
-            // self.selected_task_id = Some(task.id);
-            // self.selected_goal_id = None;
+        // Left dot (for incoming connections)
+        painter.circle_filled(left_dot_pos, dot_radius, dot_color);
+        
+        // Right dot (for outgoing connections)
+        painter.circle_filled(right_dot_pos, dot_radius, dot_color);
+        
+        // Handle interaction with the task body
+        let task_response = ui.allocate_rect(rect, Sense::click_and_drag());
+        
+        // Handle interaction with connection dots
+        let left_dot_rect = Rect::from_center_size(left_dot_pos, Vec2::splat(dot_radius * 3.0));
+        let right_dot_rect = Rect::from_center_size(right_dot_pos, Vec2::splat(dot_radius * 3.0));
+        
+        let left_dot_response = ui.allocate_rect(left_dot_rect, Sense::drag());
+        let right_dot_response = ui.allocate_rect(right_dot_rect, Sense::drag());
+        
+        // Hover effects for dots
+        if left_dot_response.hovered() || right_dot_response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            
+            // Draw hover highlight
+            if left_dot_response.hovered() {
+                painter.circle_stroke(left_dot_pos, dot_radius + 2.0, Stroke::new(2.0, Color32::from_rgb(100, 150, 255)));
+            }
+            if right_dot_response.hovered() {
+                painter.circle_stroke(right_dot_pos, dot_radius + 2.0, Stroke::new(2.0, Color32::from_rgb(100, 150, 255)));
+            }
         }
         
-        if response.dragged() && !self.is_panning && !self.creating_dependency {
-            if let Some(pointer_pos) = response.interact_pointer_pos() {
-                let world_pos = (pointer_pos - rect.center()) / self.zoom_level;
-                task.set_position(
-                    task.position.x + world_pos.x as f64,
-                    task.position.y + world_pos.y as f64,
-                );
+        // Start dependency creation from right dot (outgoing)
+        if right_dot_response.drag_started() {
+            self.start_dependency_creation(task.id);
+            self.dependency_preview_end = Some(right_dot_pos);
+        }
+        
+        // Complete dependency creation on left dot (incoming)
+        if left_dot_response.hovered() && self.creating_dependency {
+            if let Some(source_id) = self.dependency_source {
+                if source_id != task.id {
+                    // Highlight the target dot
+                    painter.circle_stroke(left_dot_pos, dot_radius + 3.0, Stroke::new(3.0, Color32::from_rgb(50, 200, 50)));
+                    
+                    // Complete on mouse release
+                    if ui.input(|i| i.pointer.any_released()) {
+                        if let Some(dep) = self.complete_dependency_creation(task.id) {
+                            // Save to database via dependency service
+                            if let Some(service) = &self.dependency_service {
+                                let service_clone = service.clone();
+                                let dep_clone = dep.clone();
+                                std::thread::spawn(move || {
+                                    let runtime = tokio::runtime::Runtime::new().unwrap();
+                                    runtime.block_on(async {
+                                        if let Err(e) = service_clone.create_dependency(
+                                            dep_clone.from_task_id,
+                                            dep_clone.to_task_id,
+                                            dep_clone.dependency_type,
+                                        ).await {
+                                            eprintln!("Failed to save dependency: {}", e);
+                                        }
+                                    });
+                                });
+                            }
+                        }
+                    }
+                }
             }
+        }
+        
+        // Update preview while dragging
+        if self.creating_dependency {
+            if let Some(pointer_pos) = ui.ctx().pointer_hover_pos() {
+                self.dependency_preview_end = Some(pointer_pos);
+            }
+            
+            // Cancel on right click or escape
+            if ui.input(|i| i.pointer.secondary_clicked() || i.key_pressed(egui::Key::Escape)) {
+                self.cancel_dependency_creation();
+            }
+        }
+        
+        // Handle regular task interactions
+        if task_response.clicked() && !self.creating_dependency {
+            self.selected_task_id = Some(task.id);
+            self.selected_goal_id = None;
+        }
+        
+        // Handle task dragging (only if not dragging from dots)
+        if task_response.dragged() && !self.is_panning && !self.creating_dependency && !left_dot_response.dragged() && !right_dot_response.dragged() {
+            let delta = task_response.drag_delta() / self.zoom_level;
+            task.set_position(
+                task.position.x + delta.x as f64,
+                task.position.y + delta.y as f64,
+            );
         }
     }
 
     fn draw_goal(&mut self, painter: &egui::Painter, ui: &mut Ui, goal: &mut Goal, tasks: &[Task], to_screen: &impl Fn(Vec2) -> Pos2, clip_rect: Rect) {
-        let world_pos = Vec2::new(goal.position.x as f32, goal.position.y as f32);
+        let world_pos = Vec2::new(goal.position_x as f32, goal.position_y as f32);
         let screen_pos = to_screen(world_pos);
         
         // Skip if outside view
@@ -415,8 +567,8 @@ impl MapView {
         }
 
         let size = Vec2::new(
-            goal.position.width as f32 * self.zoom_level,
-            goal.position.height as f32 * self.zoom_level,
+            goal.position_width as f32 * self.zoom_level,
+            goal.position_height as f32 * self.zoom_level,
         );
         let rect = Rect::from_min_size(screen_pos, size);
         

@@ -55,7 +55,7 @@ impl RecurringEditor {
             
             ui.horizontal(|ui| {
                 ui.label("Pattern:");
-                egui::ComboBox::from_label("")
+                egui::ComboBox::from_id_source("recurring_pattern_combo")
                     .selected_text(self.pattern_to_string(self.pattern))
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.pattern, RecurrencePattern::Daily, "Daily");
@@ -67,7 +67,9 @@ impl RecurringEditor {
             
             ui.horizontal(|ui| {
                 ui.label("Every");
-                ui.add(egui::DragValue::new(&mut self.interval).speed(1.0).clamp_range(1..=100));
+                ui.push_id("interval_drag", |ui| {
+                    ui.add(egui::DragValue::new(&mut self.interval).speed(1.0).clamp_range(1..=100));
+                });
                 ui.label(self.get_interval_label());
             });
             
@@ -83,7 +85,9 @@ impl RecurringEditor {
                     ui.horizontal(|ui| {
                         ui.label("Day of month:");
                         let mut day = self.day_of_month.unwrap_or(1);
-                        ui.add(egui::DragValue::new(&mut day).speed(1.0).clamp_range(1..=31));
+                        ui.push_id("monthly_day_drag", |ui| {
+                            ui.add(egui::DragValue::new(&mut day).speed(1.0).clamp_range(1..=31));
+                        });
                         self.day_of_month = Some(day);
                     });
                 }
@@ -91,7 +95,7 @@ impl RecurringEditor {
                     ui.horizontal(|ui| {
                         ui.label("Month:");
                         let mut month = self.month_of_year.unwrap_or(1);
-                        egui::ComboBox::from_label("")
+                        egui::ComboBox::from_id_source("yearly_month_combo")
                             .selected_text(self.month_name(month))
                             .show_ui(ui, |ui| {
                                 for m in 1..=12 {
@@ -102,7 +106,9 @@ impl RecurringEditor {
                         
                         ui.label("Day:");
                         let mut day = self.day_of_month.unwrap_or(1);
-                        ui.add(egui::DragValue::new(&mut day).speed(1.0).clamp_range(1..=31));
+                        ui.push_id("yearly_day_drag", |ui| {
+                            ui.add(egui::DragValue::new(&mut day).speed(1.0).clamp_range(1..=31));
+                        });
                         self.day_of_month = Some(day);
                     });
                 }
@@ -119,16 +125,20 @@ impl RecurringEditor {
                 let mut hour_val = hour;
                 let mut minute_val = minute;
                 
-                ui.add(egui::DragValue::new(&mut hour_val).speed(1.0).clamp_range(0..=23));
+                ui.push_id("time_hour", |ui| {
+                    ui.add(egui::DragValue::new(&mut hour_val).speed(1.0).clamp_range(0..=23));
+                });
                 ui.label(":");
-                ui.add(egui::DragValue::new(&mut minute_val).speed(1.0).clamp_range(0..=59));
+                ui.push_id("time_minute", |ui| {
+                    ui.add(egui::DragValue::new(&mut minute_val).speed(1.0).clamp_range(0..=59));
+                });
                 
                 self.time = NaiveTime::from_hms_opt(hour_val, minute_val, 0).unwrap();
             });
             
             ui.horizontal(|ui| {
                 ui.label("Priority:");
-                egui::ComboBox::from_label("")
+                egui::ComboBox::from_id_source("recurring_priority_combo")
                     .selected_text(format!("{:?}", self.priority))
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.priority, Priority::Critical, "Critical");
@@ -141,7 +151,9 @@ impl RecurringEditor {
             ui.horizontal(|ui| {
                 ui.label("Estimated hours:");
                 if let Some(mut hours) = self.estimated_hours {
-                    ui.add(egui::DragValue::new(&mut hours).speed(0.1).clamp_range(0.0..=100.0));
+                    ui.push_id("estimated_hours_drag", |ui| {
+                        ui.add(egui::DragValue::new(&mut hours).speed(0.1).clamp_range(0.0..=100.0));
+                    });
                     self.estimated_hours = Some(hours);
                 } else {
                     if ui.button("Set estimate").clicked() {
@@ -157,7 +169,9 @@ impl RecurringEditor {
             ui.horizontal(|ui| {
                 if let Some(mut max) = self.max_occurrences {
                     ui.checkbox(&mut false, "Max occurrences:");
-                    ui.add(egui::DragValue::new(&mut max).speed(1.0).clamp_range(1..=1000));
+                    ui.push_id("max_occurrences_drag", |ui| {
+                        ui.add(egui::DragValue::new(&mut max).speed(1.0).clamp_range(1..=1000));
+                    });
                     self.max_occurrences = Some(max);
                     if ui.button("Remove").clicked() {
                         self.max_occurrences = None;

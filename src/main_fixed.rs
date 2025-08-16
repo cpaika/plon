@@ -40,14 +40,18 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-use domain::{task::Task, goal::Goal, resource::Resource};
-use services::{TaskService, GoalService, ResourceService};
+use domain::{task::Task, goal::Goal, resource::Resource, dependency::DependencyType};
+use services::{TaskService, GoalService, ResourceService, RecurringService, DependencyService};
+use ui::views::recurring_view::RecurringView;
+use ui::views::map_view::MapView;
 
 pub struct PlonApp {
     repository: Arc<Repository>,
     task_service: Arc<TaskService>,
     goal_service: Arc<GoalService>,
     resource_service: Arc<ResourceService>,
+    recurring_service: Arc<RecurringService>,
+    dependency_service: Arc<DependencyService>,
     
     // UI State
     current_view: ViewType,
@@ -60,11 +64,15 @@ pub struct PlonApp {
     goals: Vec<Goal>,
     resources: Vec<Resource>,
     
+    // View instances
+    recurring_view: RecurringView,
+    map_view: MapView,
+    
     // New task form
     new_task_title: String,
     new_task_description: String,
     
-    // Map view state
+    // Map view state (kept for backward compatibility)
     camera_pos: egui::Vec2,
     zoom: f32,
     
@@ -89,6 +97,8 @@ impl PlonApp {
         let task_service = Arc::new(TaskService::new(repository.clone()));
         let goal_service = Arc::new(GoalService::new(repository.clone()));
         let resource_service = Arc::new(ResourceService::new(repository.clone()));
+        let recurring_service = Arc::new(RecurringService::new(repository.clone()));
+        let dependency_service = Arc::new(DependencyService::new(repository.clone()));
         
         // Load initial data synchronously (for now - in production, this would be async)
         let tasks = std::thread::spawn({
@@ -101,11 +111,16 @@ impl PlonApp {
             }
         }).join().unwrap_or_default();
         
+        let mut map_view = MapView::new();
+        map_view.set_dependency_service(dependency_service.clone());
+        
         Self {
             repository: repository.clone(),
             task_service,
             goal_service,
             resource_service,
+            recurring_service,
+            dependency_service,
             
             current_view: ViewType::Map,
             selected_task_id: None,
@@ -115,6 +130,9 @@ impl PlonApp {
             tasks,
             goals: Vec::new(),
             resources: Vec::new(),
+            
+            recurring_view: RecurringView::new(),
+            map_view,
             
             new_task_title: String::new(),
             new_task_description: String::new(),
@@ -142,16 +160,22 @@ impl PlonApp {
             let task_clone = task.clone();
             let service = self.task_service.clone();
             
-            // Spawn async task creation
-            std::thread::spawn(move || {
-                tokio::runtime::Runtime::new()
-                    .unwrap()
-                    .block_on(service.create(task_clone))
-                    .ok();
+            // Save to database in background thread
+            let handle = std::thread::spawn(move || {
+                let runtime = tokio::runtime::Runtime::new().unwrap();
+                runtime.block_on(async {
+                    match service.create(task_clone).await {
+                        Ok(_) => println!("Task saved successfully"),
+                        Err(e) => eprintln!("Failed to save task: {}", e),
+                    }
+                })
             });
             
             // Add to local list immediately for UI responsiveness
             self.tasks.push(task);
+            
+            // Optionally wait for save to complete (or let it run in background)
+            // handle.join().unwrap();
             
             // Clear form
             self.new_task_title.clear();
@@ -260,183 +284,8 @@ impl eframe::App for PlonApp {
 // View implementations
 impl PlonApp {
     fn show_map_view(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label(format!("Zoom: {:.0}%", self.zoom * 100.0));
-            if ui.button("🔍+").clicked() {
-                self.zoom = (self.zoom * 1.2).min(5.0);
-            }
-            if ui.button("🔍-").clicked() {
-                self.zoom = (self.zoom / 1.2).max(0.1);
-            }
-            if ui.button("🏠 Reset").clicked() {
-                self.zoom = 1.0;
-                self.camera_pos = egui::Vec2::ZERO;
-            }
-            
-            ui.separator();
-            ui.label(format!("Tasks: {}", self.tasks.len()));
-        });
-        
-        ui.separator();
-        
-        let available_rect = ui.available_rect_before_wrap();
-        let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
-        
-        // Handle panning
-        if response.dragged_by(egui::PointerButton::Primary) {
-            self.camera_pos += response.drag_delta();
-        }
-        
-        // Handle zoom with scroll
-        if response.hovered() {
-            let scroll = ui.input(|i| i.scroll_delta.y);
-            if scroll != 0.0 {
-                let zoom_factor = 1.0 + scroll * 0.001;
-                self.zoom = (self.zoom * zoom_factor).clamp(0.1, 5.0);
-            }
-        }
-        
-        // Handle double-click to create task
-        if response.double_clicked() {
-            let pointer_pos = response.interact_pointer_pos().unwrap_or(available_rect.center());
-            let world_pos = (pointer_pos - available_rect.center()) / self.zoom - self.camera_pos;
-            
-            let mut new_task = Task::new(
-                format!("New Task {}", self.tasks.len() + 1),
-                String::new()
-            );
-            new_task.set_position(world_pos.x as f64, world_pos.y as f64);
-            
-            // Save to database
-            let task_clone = new_task.clone();
-            let service = self.task_service.clone();
-            std::thread::spawn(move || {
-                tokio::runtime::Runtime::new()
-                    .unwrap()
-                    .block_on(service.create(task_clone))
-                    .ok();
-            });
-            
-            self.tasks.push(new_task);
-        }
-        
-        // Draw the map
-        let painter = ui.painter_at(available_rect);
-        let center = available_rect.center();
-        
-        // Transform function
-        let to_screen = |world_x: f32, world_y: f32| -> egui::Pos2 {
-            egui::Pos2::new(
-                center.x + (world_x + self.camera_pos.x) * self.zoom,
-                center.y + (world_y + self.camera_pos.y) * self.zoom
-            )
-        };
-        
-        // Draw grid
-        let grid_size = 50.0 * self.zoom;
-        let grid_color = egui::Color32::from_rgba_unmultiplied(128, 128, 128, 20);
-        
-        let start_x = ((available_rect.left() - center.x) / grid_size).floor() * grid_size;
-        let end_x = ((available_rect.right() - center.x) / grid_size).ceil() * grid_size;
-        let start_y = ((available_rect.top() - center.y) / grid_size).floor() * grid_size;
-        let end_y = ((available_rect.bottom() - center.y) / grid_size).ceil() * grid_size;
-        
-        let mut x = start_x;
-        while x <= end_x {
-            painter.line_segment(
-                [
-                    egui::Pos2::new(center.x + x, available_rect.top()),
-                    egui::Pos2::new(center.x + x, available_rect.bottom())
-                ],
-                egui::Stroke::new(1.0, grid_color)
-            );
-            x += grid_size;
-        }
-        
-        let mut y = start_y;
-        while y <= end_y {
-            painter.line_segment(
-                [
-                    egui::Pos2::new(available_rect.left(), center.y + y),
-                    egui::Pos2::new(available_rect.right(), center.y + y)
-                ],
-                egui::Stroke::new(1.0, grid_color)
-            );
-            y += grid_size;
-        }
-        
-        // Draw tasks
-        for task in &mut self.tasks {
-            let screen_pos = to_screen(task.position.x as f32, task.position.y as f32);
-            
-            // Skip if outside view
-            if !available_rect.contains(screen_pos) {
-                continue;
-            }
-            
-            let size = egui::Vec2::new(150.0, 80.0) * self.zoom;
-            let rect = egui::Rect::from_center_size(screen_pos, size);
-            
-            // Determine color based on status
-            let fill_color = match task.status {
-                domain::task::TaskStatus::Todo => egui::Color32::from_rgb(200, 200, 200),
-                domain::task::TaskStatus::InProgress => egui::Color32::from_rgb(100, 150, 255),
-                domain::task::TaskStatus::Done => egui::Color32::from_rgb(100, 255, 100),
-                domain::task::TaskStatus::Blocked => egui::Color32::from_rgb(255, 100, 100),
-                _ => egui::Color32::from_rgb(180, 180, 180),
-            };
-            
-            let selected = self.selected_task_id == Some(task.id);
-            let stroke_color = if selected {
-                egui::Color32::from_rgb(255, 200, 0)
-            } else {
-                egui::Color32::from_rgb(100, 100, 100)
-            };
-            
-            // Draw task rectangle
-            painter.rect(
-                rect,
-                5.0,
-                fill_color,
-                egui::Stroke::new(if selected { 3.0 } else { 1.0 }, stroke_color),
-            );
-            
-            // Draw task title
-            painter.text(
-                rect.center() - egui::Vec2::new(0.0, 10.0 * self.zoom),
-                egui::Align2::CENTER_CENTER,
-                &task.title,
-                egui::FontId::proportional(14.0 * self.zoom),
-                egui::Color32::BLACK,
-            );
-            
-            // Show progress if has subtasks
-            if !task.subtasks.is_empty() {
-                let (completed, total) = task.subtask_progress();
-                painter.text(
-                    rect.center() + egui::Vec2::new(0.0, 10.0 * self.zoom),
-                    egui::Align2::CENTER_CENTER,
-                    format!("{}/{}", completed, total),
-                    egui::FontId::proportional(10.0 * self.zoom),
-                    egui::Color32::from_rgb(80, 80, 80),
-                );
-            }
-            
-            // Handle interaction
-            let task_response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
-            
-            if task_response.clicked() {
-                self.selected_task_id = Some(task.id);
-            }
-            
-            if task_response.dragged() {
-                let delta = task_response.drag_delta() / self.zoom;
-                task.set_position(
-                    task.position.x + delta.x as f64,
-                    task.position.y + delta.y as f64
-                );
-            }
-        }
+        // Use the MapView struct which has dependency support
+        self.map_view.show(ui, &mut self.tasks, &mut self.goals);
     }
     
     fn show_list_view(&mut self, ui: &mut egui::Ui) {
@@ -648,9 +497,6 @@ impl PlonApp {
     }
     
     fn show_recurring_view(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Recurring Tasks");
-        ui.label("Configure recurring tasks that automatically generate on a schedule.");
-        ui.separator();
-        ui.label("Recurring task management coming soon...");
+        self.recurring_view.show(ui, Some(&*self.recurring_service));
     }
 }

@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
+use crate::domain::task::Task;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Goal {
@@ -14,9 +15,14 @@ pub struct Goal {
     pub target_date: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub task_ids: HashSet<Uuid>,
+    pub subgoal_ids: HashSet<Uuid>,
     pub parent_goal_id: Option<Uuid>,
     pub estimated_hours: Option<f32>,
-    pub position: GoalPosition,
+    pub progress: f32,
+    pub position_x: f64,
+    pub position_y: f64,
+    pub position_width: f64,
+    pub position_height: f64,
     pub color: String, // For UI visualization
 }
 
@@ -31,7 +37,9 @@ pub struct GoalPosition {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum GoalStatus {
     NotStarted,
+    Active,
     InProgress,
+    OnHold,
     AtRisk,
     Completed,
     Cancelled,
@@ -44,20 +52,20 @@ impl Goal {
             id: Uuid::new_v4(),
             title,
             description,
-            status: GoalStatus::NotStarted,
+            status: GoalStatus::Active,
             created_at: now,
             updated_at: now,
             target_date: None,
             completed_at: None,
             task_ids: HashSet::new(),
+            subgoal_ids: HashSet::new(),
             parent_goal_id: None,
             estimated_hours: None,
-            position: GoalPosition {
-                x: 0.0,
-                y: 0.0,
-                width: 200.0,
-                height: 150.0,
-            },
+            progress: 0.0,
+            position_x: 0.0,
+            position_y: 0.0,
+            position_width: 200.0,
+            position_height: 150.0,
             color: "#4A90E2".to_string(),
         }
     }
@@ -65,9 +73,6 @@ impl Goal {
     pub fn add_task(&mut self, task_id: Uuid) {
         self.task_ids.insert(task_id);
         self.updated_at = Utc::now();
-        if self.status == GoalStatus::NotStarted && !self.task_ids.is_empty() {
-            self.status = GoalStatus::InProgress;
-        }
     }
 
     pub fn remove_task(&mut self, task_id: &Uuid) -> bool {
@@ -89,8 +94,77 @@ impl Goal {
         }
     }
 
+    pub fn add_subgoal(&mut self, subgoal_id: Uuid) {
+        self.subgoal_ids.insert(subgoal_id);
+        self.updated_at = Utc::now();
+    }
+    
+    pub fn update_progress(&mut self, tasks: &[Task]) {
+        if self.task_ids.is_empty() {
+            self.progress = 0.0;
+            return;
+        }
+        
+        let mut completed_weight = 0.0;
+        let mut total_weight = 0.0;
+        
+        for task in tasks {
+            if self.task_ids.contains(&task.id) {
+                let weight = 1.0; // Could be based on estimated hours or priority
+                total_weight += weight;
+                
+                if task.status == crate::domain::task::TaskStatus::Done {
+                    completed_weight += weight;
+                } else if !task.subtasks.is_empty() {
+                    let (completed, total) = task.subtask_progress();
+                    let partial_progress = completed as f32 / total as f32;
+                    completed_weight += weight * partial_progress;
+                }
+            }
+        }
+        
+        if total_weight > 0.0 {
+            self.progress = (completed_weight / total_weight * 100.0).round() * 100.0 / 100.0;
+        } else {
+            self.progress = 0.0;
+        }
+    }
+    
+    pub fn calculate_hours(&self, tasks: &[Task]) -> (f32, f32) {
+        let mut estimated_total = 0.0;
+        let mut actual_total = 0.0;
+        
+        for task in tasks {
+            if self.task_ids.contains(&task.id) {
+                if let Some(est) = task.estimated_hours {
+                    estimated_total += est;
+                }
+                if let Some(act) = task.actual_hours {
+                    actual_total += act;
+                }
+            }
+        }
+        
+        (estimated_total, actual_total)
+    }
+    
+    pub fn is_complete(&self) -> bool {
+        self.status == GoalStatus::Completed
+    }
+    
+    pub fn is_overdue(&self) -> bool {
+        if let Some(target) = self.target_date {
+            target < Utc::now() && self.status != GoalStatus::Completed
+        } else {
+            false
+        }
+    }
+    
     pub fn set_position(&mut self, x: f64, y: f64, width: f64, height: f64) {
-        self.position = GoalPosition { x, y, width, height };
+        self.position_x = x;
+        self.position_y = y;
+        self.position_width = width;
+        self.position_height = height;
         self.updated_at = Utc::now();
     }
 
@@ -126,7 +200,7 @@ mod tests {
         let goal = Goal::new("Q1 Goals".to_string(), "Goals for Q1".to_string());
         assert_eq!(goal.title, "Q1 Goals");
         assert_eq!(goal.description, "Goals for Q1");
-        assert_eq!(goal.status, GoalStatus::NotStarted);
+        assert_eq!(goal.status, GoalStatus::Active);
         assert!(goal.task_ids.is_empty());
         assert_eq!(goal.color, "#4A90E2");
     }
@@ -139,7 +213,7 @@ mod tests {
         
         goal.add_task(task_id1);
         assert!(goal.task_ids.contains(&task_id1));
-        assert_eq!(goal.status, GoalStatus::InProgress);
+        assert_eq!(goal.status, GoalStatus::Active);
         
         goal.add_task(task_id2);
         assert_eq!(goal.task_ids.len(), 2);
@@ -154,7 +228,7 @@ mod tests {
     #[test]
     fn test_update_status() {
         let mut goal = Goal::new("Goal".to_string(), "".to_string());
-        assert_eq!(goal.status, GoalStatus::NotStarted);
+        assert_eq!(goal.status, GoalStatus::Active);
         assert!(goal.completed_at.is_none());
         
         goal.update_status(GoalStatus::InProgress);
@@ -225,9 +299,9 @@ mod tests {
         let mut goal = Goal::new("Goal".to_string(), "".to_string());
         goal.set_position(100.0, 200.0, 300.0, 150.0);
         
-        assert_eq!(goal.position.x, 100.0);
-        assert_eq!(goal.position.y, 200.0);
-        assert_eq!(goal.position.width, 300.0);
-        assert_eq!(goal.position.height, 150.0);
+        assert_eq!(goal.position_x, 100.0);
+        assert_eq!(goal.position_y, 200.0);
+        assert_eq!(goal.position_width, 300.0);
+        assert_eq!(goal.position_height, 150.0);
     }
 }
