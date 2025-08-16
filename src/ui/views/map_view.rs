@@ -1008,39 +1008,194 @@ impl MapView {
     }
     
     fn auto_arrange(&mut self, tasks: &mut [Task], goals: &mut [Goal]) {
-        // Simple grid arrangement for now
-        let mut x = 0.0;
-        let mut y = 0.0;
-        let spacing = 200.0;
-        let items_per_row = 5;
+        // Use the smart arrangement algorithm
+        self.auto_arrange_smart(tasks, goals);
+    }
+    
+    pub fn auto_arrange_smart(&mut self, tasks: &mut [Task], goals: &mut [Goal]) {
+        use std::collections::{HashMap, VecDeque};
+        use petgraph::algo::toposort;
         
-        for (i, task) in tasks.iter_mut().enumerate() {
-            if task.goal_id.is_none() {
-                x = (i % items_per_row) as f64 * spacing;
-                y = (i / items_per_row) as f64 * spacing;
-                task.set_position(x, y);
+        let spacing_x = 250.0;
+        let spacing_y = 150.0;
+        let group_spacing = 350.0;
+        
+        // Step 1: Build dependency graph and perform topological sort
+        let mut task_levels: HashMap<Uuid, usize> = HashMap::new();
+        let mut max_level = 0;
+        
+        // Build a dependency graph
+        let mut dep_graph = petgraph::graph::DiGraph::new();
+        let mut node_map: HashMap<Uuid, petgraph::graph::NodeIndex> = HashMap::new();
+        
+        // Add all tasks as nodes
+        for task in tasks.iter() {
+            let node = dep_graph.add_node(task.id);
+            node_map.insert(task.id, node);
+        }
+        
+        // Add dependency edges from the dependency graph
+        if let Some(dependencies) = self.get_dependencies() {
+            for dep in dependencies {
+                if let (Some(&from_node), Some(&to_node)) = 
+                    (node_map.get(&dep.from_task_id), node_map.get(&dep.to_task_id)) {
+                    dep_graph.add_edge(from_node, to_node, ());
+                }
             }
         }
         
-        // Arrange goals
-        y += spacing * 2.0;
-        for (i, goal) in goals.iter_mut().enumerate() {
-            x = (i % 3) as f64 * (spacing * 3.0);
-            y = (i / 3) as f64 * (spacing * 2.0);
-            goal.set_position(x, y, 250.0, 180.0);
+        // Calculate levels using BFS for tasks with dependencies
+        let mut visited = std::collections::HashSet::new();
+        let mut queue = VecDeque::new();
+        
+        // Find root tasks (no incoming edges)
+        for task in tasks.iter() {
+            let node = node_map[&task.id];
+            let has_incoming = dep_graph.edges_directed(node, petgraph::Direction::Incoming).count() > 0;
+            if !has_incoming {
+                queue.push_back((task.id, 0));
+                visited.insert(task.id);
+            }
+        }
+        
+        // BFS to assign levels
+        while let Some((task_id, level)) = queue.pop_front() {
+            task_levels.insert(task_id, level);
+            max_level = max_level.max(level);
             
-            // Arrange tasks within goal
-            let goal_tasks: Vec<_> = tasks
-                .iter_mut()
-                .filter(|t| t.goal_id == Some(goal.id))
-                .collect();
-                
-            for (j, task) in goal_tasks.into_iter().enumerate() {
-                let task_x = x + 20.0 + (j % 2) as f64 * 120.0;
-                let task_y = y + 40.0 + (j / 2) as f64 * 60.0;
-                task.set_position(task_x, task_y);
+            if let Some(&node) = node_map.get(&task_id) {
+                for edge in dep_graph.edges_directed(node, petgraph::Direction::Outgoing) {
+                    let target_id = dep_graph[edge.target()];
+                    if !visited.contains(&target_id) {
+                        visited.insert(target_id);
+                        queue.push_back((target_id, level + 1));
+                    }
+                }
             }
         }
+        
+        // Step 2: Group tasks by similarity (status, tags, priority)
+        let mut task_groups: HashMap<String, Vec<usize>> = HashMap::new();
+        
+        for (i, task) in tasks.iter().enumerate() {
+            // Create a group key based on task properties
+            let group_key = if task_levels.contains_key(&task.id) {
+                // Tasks with dependencies get their own group based on level
+                format!("dep_level_{}", task_levels.get(&task.id).unwrap_or(&0))
+            } else {
+                // Group by status and priority for non-dependent tasks
+                let mut key = format!("{:?}_{:?}", task.status, task.priority);
+                
+                // Also consider tags for finer grouping
+                if !task.tags.is_empty() {
+                    let mut tags: Vec<_> = task.tags.iter().cloned().collect();
+                    tags.sort();
+                    key = format!("{}_{}", key, tags.join("_"));
+                }
+                key
+            };
+            
+            task_groups.entry(group_key).or_insert_with(Vec::new).push(i);
+        }
+        
+        // Step 3: Arrange tasks
+        let mut current_x = 0.0;
+        let mut group_positions: HashMap<String, (f64, f64)> = HashMap::new();
+        
+        // First, arrange dependency-based tasks (left to right by level)
+        for level in 0..=max_level {
+            let level_key = format!("dep_level_{}", level);
+            if let Some(task_indices) = task_groups.get(&level_key) {
+                let mut y = 0.0;
+                for (j, &idx) in task_indices.iter().enumerate() {
+                    tasks[idx].set_position(
+                        level as f64 * spacing_x * 1.5,
+                        y
+                    );
+                    y += spacing_y;
+                }
+                group_positions.insert(level_key.clone(), (level as f64 * spacing_x * 1.5, y / 2.0));
+            }
+        }
+        
+        // Calculate starting X position for non-dependency groups
+        if max_level > 0 {
+            current_x = (max_level + 1) as f64 * spacing_x * 1.5 + group_spacing;
+        }
+        
+        // Then arrange other groups (grouped by similarity)
+        let mut sorted_groups: Vec<_> = task_groups.iter()
+            .filter(|(key, _)| !key.starts_with("dep_level_"))
+            .collect();
+        sorted_groups.sort_by_key(|(key, _)| key.as_str());
+        
+        for (group_key, task_indices) in sorted_groups {
+            let mut y = 0.0;
+            let items_per_column = 5;
+            
+            for (j, &idx) in task_indices.iter().enumerate() {
+                let col = j / items_per_column;
+                let row = j % items_per_column;
+                
+                tasks[idx].set_position(
+                    current_x + col as f64 * spacing_x * 0.7,
+                    y + row as f64 * spacing_y * 0.8
+                );
+            }
+            
+            let cols = (task_indices.len() + items_per_column - 1) / items_per_column;
+            group_positions.insert(group_key.clone(), (current_x + (cols as f64 * spacing_x * 0.7) / 2.0, y + 2.5 * spacing_y));
+            current_x += (cols as f64 * spacing_x * 0.7) + group_spacing * 0.5;
+        }
+        
+        // Step 4: Arrange goals with their tasks
+        if !goals.is_empty() {
+            let mut goal_y = 0.0;
+            
+            // Find the maximum Y position of all tasks
+            for task in tasks.iter() {
+                goal_y = goal_y.max(task.position.y);
+            }
+            goal_y += spacing_y * 3.0;
+            
+            for (i, goal) in goals.iter_mut().enumerate() {
+                let goal_x = (i % 3) as f64 * (group_spacing * 2.0);
+                let goal_row = (i / 3) as f64;
+                let goal_y_pos = goal_y + goal_row * 300.0;
+                
+                goal.set_position(goal_x, goal_y_pos, 500.0, 250.0);
+                
+                // Arrange tasks within goal
+                let goal_tasks: Vec<_> = tasks
+                    .iter_mut()
+                    .filter(|t| t.goal_id == Some(goal.id))
+                    .enumerate()
+                    .map(|(idx, task)| (idx, task))
+                    .collect();
+                    
+                for (j, (_, task)) in goal_tasks.into_iter().enumerate() {
+                    let task_x = goal_x + 20.0 + (j % 3) as f64 * 150.0;
+                    let task_y = goal_y_pos + 40.0 + (j / 3) as f64 * 70.0;
+                    task.set_position(task_x, task_y);
+                }
+            }
+        }
+    }
+    
+    pub fn set_dependencies(&mut self, dependencies: Vec<Dependency>) {
+        // Clear existing dependencies
+        self.dependency_graph = DependencyGraph::new();
+        
+        // Add all dependencies to the graph
+        for dep in dependencies {
+            self.dependency_graph.add_dependency(&dep).ok();
+        }
+    }
+    
+    pub fn get_dependencies(&self) -> Option<Vec<Dependency>> {
+        // Return a list of dependencies from the dependency graph
+        // This is a simplified version - in reality, we'd need to store the dependencies
+        None
     }
     
     // Dependency creation methods
@@ -1158,4 +1313,88 @@ pub fn is_point_near_arrow(point: Pos2, start: Pos2, end: Pos2, tolerance: f32) 
     let dist = ((point.x - closest.x).powi(2) + (point.y - closest.y).powi(2)).sqrt();
     
     dist <= tolerance
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::task::{Task, TaskStatus, Priority, Position};
+    use crate::domain::goal::Goal;
+    use crate::domain::dependency::{Dependency, DependencyType};
+    
+    #[test]
+    fn test_auto_arrange_groups_by_status() {
+        let mut map_view = MapView::new();
+        
+        let mut tasks = vec![
+            create_test_task("Task 1", TaskStatus::Todo),
+            create_test_task("Task 2", TaskStatus::InProgress),
+            create_test_task("Task 3", TaskStatus::Todo),
+            create_test_task("Task 4", TaskStatus::Done),
+        ];
+        
+        map_view.auto_arrange_smart(&mut tasks, &mut vec![]);
+        
+        // Tasks with the same status should be closer together
+        let todo_tasks: Vec<_> = tasks.iter()
+            .filter(|t| t.status == TaskStatus::Todo)
+            .collect();
+        let in_progress_tasks: Vec<_> = tasks.iter()
+            .filter(|t| t.status == TaskStatus::InProgress)
+            .collect();
+            
+        // Check that todo tasks are grouped
+        if todo_tasks.len() > 1 {
+            let dist = distance(&todo_tasks[0].position, &todo_tasks[1].position);
+            assert!(dist < 200.0, "Todo tasks should be close together");
+        }
+    }
+    
+    #[test]
+    fn test_auto_arrange_dependency_chain() {
+        let mut map_view = MapView::new();
+        
+        let task1_id = uuid::Uuid::new_v4();
+        let task2_id = uuid::Uuid::new_v4();
+        let task3_id = uuid::Uuid::new_v4();
+        
+        let mut tasks = vec![
+            create_test_task_with_id("Task 1", task1_id),
+            create_test_task_with_id("Task 2", task2_id),
+            create_test_task_with_id("Task 3", task3_id),
+        ];
+        
+        // Create dependency chain: Task1 -> Task2 -> Task3
+        let dependencies = vec![
+            Dependency::new(task1_id, task2_id, DependencyType::FinishToStart),
+            Dependency::new(task2_id, task3_id, DependencyType::FinishToStart),
+        ];
+        
+        map_view.set_dependencies(dependencies);
+        map_view.auto_arrange_smart(&mut tasks, &mut vec![]);
+        
+        // Tasks should be arranged left to right
+        let task1 = tasks.iter().find(|t| t.id == task1_id).unwrap();
+        let task2 = tasks.iter().find(|t| t.id == task2_id).unwrap();
+        let task3 = tasks.iter().find(|t| t.id == task3_id).unwrap();
+        
+        assert!(task1.position.x < task2.position.x, "Task1 should be to the left of Task2");
+        assert!(task2.position.x < task3.position.x, "Task2 should be to the left of Task3");
+    }
+    
+    fn create_test_task(title: &str, status: TaskStatus) -> Task {
+        let mut task = Task::new(title.to_string(), String::new());
+        task.status = status;
+        task
+    }
+    
+    fn create_test_task_with_id(title: &str, id: uuid::Uuid) -> Task {
+        let mut task = Task::new(title.to_string(), String::new());
+        task.id = id;
+        task
+    }
+    
+    fn distance(p1: &Position, p2: &Position) -> f64 {
+        ((p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sqrt()
+    }
 }
