@@ -50,6 +50,14 @@ impl RecurringTaskTemplate {
         recurrence_rule: RecurrenceRule,
     ) -> Self {
         let now = Utc::now();
+        
+        // Check if template should be active based on end date
+        let active = if let Some(end_date) = recurrence_rule.end_date {
+            now.date_naive() <= end_date
+        } else {
+            true
+        };
+        
         let mut template = Self {
             id: Uuid::new_v4(),
             title,
@@ -59,13 +67,17 @@ impl RecurringTaskTemplate {
             assigned_resource_id: None,
             estimated_hours: None,
             recurrence_rule,
-            active: true,
+            active,
             created_at: now,
             updated_at: now,
             last_generated: None,
             next_occurrence: None,
         };
-        template.next_occurrence = Some(template.calculate_next_occurrence());
+        // For new templates, set next occurrence to now to allow immediate generation
+        // but only if the template is active
+        if template.active {
+            template.next_occurrence = Some(now);
+        }
         template
     }
 
