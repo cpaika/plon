@@ -50,7 +50,7 @@ impl PlonApp {
     }
     
     pub fn has_improved_kanban_view(&self) -> bool {
-        true // Type system ensures we're using kanban_view_improved::KanbanView
+        true // Type system ensures we're using kanban_view_enhanced::KanbanView
     }
     
     pub fn add_test_task(&mut self, task: Task) {
