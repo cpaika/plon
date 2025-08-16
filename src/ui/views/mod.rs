@@ -1,5 +1,6 @@
 pub mod list_view;
 pub mod kanban_view;
+pub mod kanban_view_extensions;
 pub mod map_view;
 pub mod timeline_view;
 pub mod dashboard_view;

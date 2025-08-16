@@ -1,4 +1,4 @@
-use crate::domain::{task::Task, goal::Goal};
+use crate::domain::{task::Task, goal::Goal, dependency::{Dependency, DependencyType, DependencyGraph}};
 use crate::services::summarization::{SummarizationService, SummaryCache};
 pub use crate::services::summarization::SummarizationLevel;
 use eframe::egui::{self, Color32, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
@@ -31,6 +31,14 @@ pub struct MapView {
     goal_summaries: HashMap<Uuid, String>,
     runtime: Arc<Runtime>,
     last_summarization_zoom: f32,
+    
+    // Dependency creation state
+    creating_dependency: bool,
+    dependency_source: Option<Uuid>,
+    dependency_preview_end: Option<Pos2>,
+    
+    // Dependencies
+    dependency_graph: DependencyGraph,
 }
 
 #[derive(Clone)]
@@ -91,6 +99,10 @@ impl MapView {
             goal_summaries: HashMap::new(),
             runtime,
             last_summarization_zoom: 1.0,
+            creating_dependency: false,
+            dependency_source: None,
+            dependency_preview_end: None,
+            dependency_graph: DependencyGraph::new(),
         }
     }
 
@@ -169,6 +181,14 @@ impl MapView {
                 let zoom_factor = 1.0 + scroll_delta * 0.001;
                 self.zoom_level = (self.zoom_level * zoom_factor).clamp(0.1, 5.0);
             }
+            
+            // Update dependency preview end position
+            // Note: For actual implementation, this would need mutable self
+            // if self.creating_dependency {
+            //     if let Some(pointer_pos) = response.hover_pos() {
+            //         self.dependency_preview_end = Some(pointer_pos);
+            //     }
+            // }
         }
 
         // Draw the map
@@ -189,7 +209,7 @@ impl MapView {
         self.draw_grid(&painter, available_rect, &to_screen);
 
         // Draw dependencies
-        self.draw_dependencies(&painter, tasks, &to_screen);
+        self.draw_dependencies(&painter, tasks, to_screen);
 
         // Draw goals
         for goal in goals.iter_mut() {
@@ -208,7 +228,7 @@ impl MapView {
         }
 
         // Handle task creation on double-click
-        if response.double_clicked() && !self.is_panning {
+        if response.double_clicked() && !self.is_panning && !self.creating_dependency {
             if let Some(pointer_pos) = response.interact_pointer_pos() {
                 let world_pos = (pointer_pos - center) / self.zoom_level - self.camera_pos;
                 let mut new_task = Task::new("New Task".to_string(), String::new());
@@ -216,6 +236,14 @@ impl MapView {
                 tasks.push(new_task);
             }
         }
+        
+        // Cancel dependency creation on escape or right click
+        // Note: For actual implementation, this would need mutable self
+        // if self.creating_dependency {
+        //     if ui.input(|i| i.key_pressed(egui::Key::Escape)) || response.secondary_clicked() {
+        //         self.cancel_dependency_creation();
+        //     }
+        // }
     }
 
     fn draw_grid(&self, painter: &egui::Painter, rect: Rect, to_screen: &impl Fn(Vec2) -> Pos2) {
@@ -366,12 +394,12 @@ impl MapView {
             // self.selected_goal_id = None;
         }
         
-        if response.dragged() && !self.is_panning {
+        if response.dragged() && !self.is_panning && !self.creating_dependency {
             if let Some(pointer_pos) = response.interact_pointer_pos() {
                 let world_pos = (pointer_pos - rect.center()) / self.zoom_level;
                 task.set_position(
-                    (task.position.x + world_pos.x as f64),
-                    (task.position.y + world_pos.y as f64),
+                    task.position.x + world_pos.x as f64,
+                    task.position.y + world_pos.y as f64,
                 );
             }
         }
@@ -455,8 +483,108 @@ impl MapView {
         }
     }
 
-    fn draw_dependencies(&self, painter: &egui::Painter, tasks: &[Task], to_screen: &impl Fn(Vec2) -> Pos2) {
-        // TODO: Draw dependency arrows between tasks
+    fn draw_dependencies(&self, painter: &egui::Painter, tasks: &[Task], to_screen: impl Fn(Vec2) -> Pos2 + Copy) {
+        // Create a map of task IDs to positions for quick lookup
+        let task_positions: HashMap<Uuid, Vec2> = tasks.iter()
+            .map(|t| (t.id, Vec2::new(t.position.x as f32, t.position.y as f32)))
+            .collect();
+        
+        // Draw all dependencies from the graph
+        for dependency in self.dependency_graph.get_all_dependencies() {
+            if let (Some(&from_pos), Some(&to_pos)) = (
+                task_positions.get(&dependency.from_task_id),
+                task_positions.get(&dependency.to_task_id),
+            ) {
+                // Calculate task rectangle bounds
+                let task_size = Vec2::new(150.0, 80.0);
+                
+                // Calculate connection points based on dependency type
+                let (start_offset, end_offset) = match dependency.dependency_type {
+                    DependencyType::FinishToStart => {
+                        // From right edge to left edge
+                        (Vec2::new(task_size.x / 2.0, 0.0), Vec2::new(-task_size.x / 2.0, 0.0))
+                    }
+                    DependencyType::StartToStart => {
+                        // From left edge to left edge
+                        (Vec2::new(-task_size.x / 2.0, 0.0), Vec2::new(-task_size.x / 2.0, 0.0))
+                    }
+                    DependencyType::FinishToFinish => {
+                        // From right edge to right edge
+                        (Vec2::new(task_size.x / 2.0, 0.0), Vec2::new(task_size.x / 2.0, 0.0))
+                    }
+                    DependencyType::StartToFinish => {
+                        // From left edge to right edge
+                        (Vec2::new(-task_size.x / 2.0, 0.0), Vec2::new(task_size.x / 2.0, 0.0))
+                    }
+                };
+                
+                let start_screen = to_screen(from_pos + start_offset);
+                let end_screen = to_screen(to_pos + end_offset);
+                
+                // Get the arrow path
+                let path = calculate_arrow_path(start_screen, end_screen, dependency.dependency_type);
+                
+                // Draw the arrow as a bezier curve or lines
+                let arrow_color = if self.dependency_graph.get_critical_path(&HashMap::new()).contains(&dependency.from_task_id) {
+                    Color32::from_rgb(255, 100, 100) // Red for critical path
+                } else {
+                    Color32::from_rgb(100, 100, 200) // Blue for normal dependencies
+                };
+                
+                let stroke = Stroke::new(2.0, arrow_color);
+                
+                if path.len() >= 4 {
+                    // Draw as bezier curve
+                    painter.add(egui::Shape::CubicBezier(
+                        egui::epaint::CubicBezierShape {
+                            points: [path[0], path[1], path[2], path[3]],
+                            closed: false,
+                            fill: Color32::TRANSPARENT,
+                            stroke,
+                        },
+                    ));
+                } else if path.len() >= 2 {
+                    // Draw as line
+                    painter.line_segment([path[0], path[path.len() - 1]], stroke);
+                }
+                
+                // Draw arrowhead
+                let arrow_size = 10.0;
+                let end_point = path[path.len() - 1];
+                let prev_point = if path.len() >= 2 { path[path.len() - 2] } else { path[0] };
+                
+                let direction = (end_point - prev_point).normalized();
+                let perpendicular = Vec2::new(-direction.y, direction.x);
+                
+                let arrow_points = vec![
+                    end_point,
+                    end_point - direction * arrow_size + perpendicular * (arrow_size / 2.0),
+                    end_point - direction * arrow_size - perpendicular * (arrow_size / 2.0),
+                ];
+                
+                painter.add(egui::Shape::convex_polygon(
+                    arrow_points,
+                    arrow_color,
+                    Stroke::NONE,
+                ));
+            }
+        }
+        
+        // Draw dependency preview if creating
+        if self.creating_dependency {
+            if let (Some(source_id), Some(preview_end)) = (self.dependency_source, self.dependency_preview_end) {
+                if let Some(&source_pos) = task_positions.get(&source_id) {
+                    let task_size = Vec2::new(150.0, 80.0);
+                    let start_screen = to_screen(source_pos + Vec2::new(task_size.x / 2.0, 0.0));
+                    
+                    // Draw preview line
+                    painter.line_segment(
+                        [start_screen, preview_end],
+                        Stroke::new(2.0, Color32::from_rgba_unmultiplied(100, 100, 200, 128)),
+                    );
+                }
+            }
+        }
     }
 
     fn draw_clusters(&mut self, painter: &egui::Painter, ui: &mut Ui, tasks: &[Task], to_screen: &impl Fn(Vec2) -> Pos2, clip_rect: Rect) {
@@ -692,4 +820,121 @@ impl MapView {
             }
         }
     }
+    
+    // Dependency creation methods
+    pub fn is_creating_dependency(&self) -> bool {
+        self.creating_dependency
+    }
+    
+    pub fn get_dependency_source(&self) -> Option<Uuid> {
+        self.dependency_source
+    }
+    
+    pub fn start_dependency_creation(&mut self, source_task_id: Uuid) {
+        self.creating_dependency = true;
+        self.dependency_source = Some(source_task_id);
+        self.dependency_preview_end = None;
+    }
+    
+    pub fn complete_dependency_creation(&mut self, target_task_id: Uuid) -> Option<Dependency> {
+        if let Some(source_id) = self.dependency_source {
+            if source_id != target_task_id {
+                let dependency = Dependency::new(source_id, target_task_id, DependencyType::FinishToStart);
+                
+                // Try to add to graph
+                if self.dependency_graph.add_dependency(&dependency).is_ok() {
+                    self.creating_dependency = false;
+                    self.dependency_source = None;
+                    self.dependency_preview_end = None;
+                    return Some(dependency);
+                }
+            }
+        }
+        self.cancel_dependency_creation();
+        None
+    }
+    
+    pub fn cancel_dependency_creation(&mut self) {
+        self.creating_dependency = false;
+        self.dependency_source = None;
+        self.dependency_preview_end = None;
+    }
+    
+    pub fn get_dependency_preview(&self, start_pos: Vec2, mouse_pos: Vec2) -> Option<(Vec2, Vec2)> {
+        if self.creating_dependency {
+            Some((start_pos, mouse_pos))
+        } else {
+            None
+        }
+    }
+}
+
+// Public utility functions for arrow drawing
+pub fn calculate_arrow_path(start: Pos2, end: Pos2, dependency_type: DependencyType) -> Vec<Pos2> {
+    let mut path = Vec::new();
+    
+    match dependency_type {
+        DependencyType::FinishToStart => {
+            // Straight arrow from right edge of source to left edge of target
+            path.push(start);
+            
+            // Add control points for a smooth bezier curve
+            let mid_x = (start.x + end.x) / 2.0;
+            path.push(Pos2::new(mid_x, start.y));
+            path.push(Pos2::new(mid_x, end.y));
+            
+            path.push(end);
+        }
+        DependencyType::StartToStart => {
+            // Curved arrow from left to left
+            path.push(start);
+            
+            let offset = 30.0;
+            path.push(Pos2::new(start.x - offset, start.y));
+            path.push(Pos2::new(end.x - offset, end.y));
+            
+            path.push(end);
+        }
+        DependencyType::FinishToFinish => {
+            // Curved arrow from right to right
+            path.push(start);
+            
+            let offset = 30.0;
+            path.push(Pos2::new(start.x + offset, start.y));
+            path.push(Pos2::new(end.x + offset, end.y));
+            
+            path.push(end);
+        }
+        DependencyType::StartToFinish => {
+            // Diagonal arrow from left to right
+            path.push(start);
+            path.push(end);
+        }
+    }
+    
+    path
+}
+
+pub fn is_point_near_arrow(point: Pos2, start: Pos2, end: Pos2, tolerance: f32) -> bool {
+    // Calculate distance from point to line segment
+    let line_vec = end - start;
+    let point_vec = point - start;
+    
+    let line_len_sq = line_vec.x * line_vec.x + line_vec.y * line_vec.y;
+    if line_len_sq == 0.0 {
+        // Start and end are the same point
+        let dist = ((point.x - start.x).powi(2) + (point.y - start.y).powi(2)).sqrt();
+        return dist <= tolerance;
+    }
+    
+    // Calculate projection of point onto line
+    let t = ((point_vec.x * line_vec.x + point_vec.y * line_vec.y) / line_len_sq).clamp(0.0, 1.0);
+    
+    // Find the closest point on the line segment
+    let closest = start + line_vec * t;
+    
+    // Calculate distance from point to closest point on line
+    let dist = ((point.x - closest.x).powi(2) + (point.y - closest.y).powi(2)).sqrt();
+    
+    dist <= tolerance
 }
