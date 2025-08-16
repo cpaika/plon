@@ -1,34 +1,64 @@
-use crate::domain::task::{Task, TaskStatus, Priority};
+use crate::domain::task::{Task, TaskStatus, Priority, SubTask};
 use crate::services::TaskService;
-use eframe::egui::{self, Ui, Context, Response, Rect, Pos2, Vec2, Color32, Stroke, Rounding, FontId, Align, Layout, Sense, CursorIcon};
+use eframe::egui::{self, Ui, Context, Response, Rect, Pos2, Vec2, Color32, Stroke, Rounding, FontId, Align, Layout, Sense, CursorIcon, Key};
 use std::collections::{HashMap, HashSet};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Duration, Weekday};
 use uuid::Uuid;
 use std::sync::Arc;
+use std::time::Instant;
 
 pub struct KanbanView {
-    pub(super) columns: Vec<KanbanColumn>,
-    pub(super) drag_context: Option<DragContext>,
-    pub(super) filter_options: FilterOptions,
-    pub(super) view_preferences: ViewPreferences,
-    pub(super) animations: AnimationManager,
-    pub(super) quick_add_states: HashMap<String, QuickAddState>,
-    pub(super) context_menu: Option<ContextMenu>,
-    pub(super) selected_cards: HashSet<Uuid>,
-    pub(super) hovered_card: Option<Uuid>,
-    pub(super) focused_card: Option<Uuid>,
-    pub(super) swimlane_config: SwimlaneConfig,
-    pub(super) tag_colors: HashMap<String, Color32>,
+    pub columns: Vec<KanbanColumn>,
+    pub tasks: Vec<Task>,
+    pub drag_context: Option<DragContext>,
+    pub selected_tasks: HashSet<Uuid>,
+    pub view_bounds: Rect,
+    pub scroll_offset: Vec2,
+    pub edit_mode: Option<EditMode>,
+    pub editing_task_id: Option<Uuid>,
+    pub edit_buffer: String,
+    pub validation_error_message: String,
+    pub enable_auto_save: bool,
+    pub auto_save_delay_ms: u64,
+    pub card_animations: HashMap<Uuid, CardAnimation>,
+    pub editing_column_id: Option<Uuid>,
+    pub quick_add_column: Option<usize>,
+    pub quick_add_buffer: String,
+    pub context_menu_task_id: Option<Uuid>,
+    pub context_menu_position: Pos2,
+    pub context_menu_selected_index: usize,
+    pub delete_confirmation_task_id: Option<Uuid>,
+    pub show_archived: bool,
+    pub viewport_width: f32,
+    pub enable_neighbor_resize: bool,
+    pub filter_options: FilterOptions,
+    pub view_preferences: ViewPreferences,
+    pub animations: AnimationManager,
+    pub quick_add_states: HashMap<String, QuickAddState>,
+    pub context_menu: Option<ContextMenu>,
+    pub selected_cards: HashSet<Uuid>,
+    pub hovered_card: Option<Uuid>,
+    pub focused_card: Option<Uuid>,
+    pub swimlane_config: SwimlaneConfig,
+    pub tag_colors: HashMap<String, Color32>,
 }
 
 #[derive(Clone)]
 pub struct KanbanColumn {
+    pub id: Uuid,
     pub title: String,
     pub status: TaskStatus,
     pub color: Color32,
+    pub tasks: Vec<Uuid>,
     pub width: f32,
-    pub collapsed: bool,
+    pub min_width: f32,
+    pub max_width: f32,
+    pub is_collapsed: bool,
     pub wip_limit: Option<usize>,
+    pub bounds: Rect,
+    pub is_resizing: bool,
+    pub resize_handle_hovered: bool,
+    pub collapsed: bool,
     pub visible: bool,
     pub position: usize,
 }
@@ -37,9 +67,12 @@ pub struct DragContext {
     pub task_id: Uuid,
     pub start_position: Pos2,
     pub current_position: Pos2,
-    pub selected_tasks: Vec<Uuid>,
-    pub is_multi_drag: bool,
+    pub offset: Vec2,
+    pub selected_tasks: HashSet<Uuid>,
+    pub is_multi_select: bool,
     pub original_status: TaskStatus,
+    pub drag_velocity: Vec2,
+    pub last_update_time: std::time::Instant,
 }
 
 #[derive(Default, Clone)]
@@ -69,20 +102,160 @@ pub(super) struct AnimationManager {
     pub(super) time: f32,
 }
 
-pub(super) struct CardAnimation {
-    pub(super) start_pos: Pos2,
-    pub(super) end_pos: Pos2,
-    pub(super) start_time: f32,
-    pub(super) duration: f32,
-    pub(super) opacity: f32,
-    pub(super) scale: f32,
+pub struct CardAnimation {
+    pub start_pos: Pos2,
+    pub end_pos: Pos2,
+    pub start_time: f32,
+    pub duration: f32,
+    pub opacity: f32,
+    pub scale: f32,
+    pub animation_type: AnimationType,
 }
 
-pub(super) struct ColumnAnimation {
-    pub(super) start_width: f32,
-    pub(super) end_width: f32,
-    pub(super) start_time: f32,
-    pub(super) duration: f32,
+pub struct ColumnAnimation {
+    pub start_width: f32,
+    pub end_width: f32,
+    pub start_time: f32,
+    pub duration: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct Shadow {
+    pub extrusion: f32,
+    pub color: Color32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AnimationType {
+    HoverIn,
+    HoverOut,
+    Click,
+    Drag,
+    Drop,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum EditMode {
+    TaskTitle,
+    TaskDescription,
+    TaskTags,
+    TaskPriority,
+    TaskAssignee,
+    TaskDueDate,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CardAction {
+    Edit,
+    Copy,
+    Duplicate,
+    MoveTo(TaskStatus),
+    Archive,
+    Delete,
+    ConvertToSubtask,
+    AssignTo(String),
+    SetPriority(Priority),
+    AddTag(String),
+    RemoveTag(String),
+    SetDueDate(DateTime<Utc>),
+}
+
+#[derive(Debug, Clone)]
+pub struct CardStyle {
+    pub shadow: Shadow,
+    pub corner_radius: Rounding,
+    pub use_gradient: bool,
+    pub gradient_start: Color32,
+    pub gradient_end: Color32,
+    pub padding: Vec2,
+    pub title_margin_bottom: f32,
+    pub tag_spacing: f32,
+    pub footer_margin_top: f32,
+    pub is_skeleton: bool,
+    pub skeleton_shimmer: bool,
+    pub skeleton_color: Color32,
+    pub shimmer_duration: std::time::Duration,
+    pub title_font_size: f32,
+}
+
+impl CardStyle {
+    pub fn default() -> Self {
+        Self {
+            shadow: Shadow {
+                extrusion: 8.0,
+                color: Color32::from_black_alpha(40),
+            },
+            corner_radius: Rounding::same(8.0),
+            use_gradient: true,
+            gradient_start: Color32::from_rgb(255, 255, 255),
+            gradient_end: Color32::from_rgb(249, 250, 251),
+            padding: Vec2::new(16.0, 12.0),
+            title_margin_bottom: 8.0,
+            tag_spacing: 4.0,
+            footer_margin_top: 12.0,
+            is_skeleton: false,
+            skeleton_shimmer: false,
+            skeleton_color: Color32::from_rgb(229, 231, 235),
+            shimmer_duration: std::time::Duration::from_millis(1500),
+            title_font_size: 14.0,
+        }
+    }
+    
+    pub fn hover() -> Self {
+        let mut style = Self::default();
+        style.shadow.extrusion = 16.0;
+        style.shadow.color = Color32::from_black_alpha(60);
+        style
+    }
+    
+    pub fn dragging() -> Self {
+        let mut style = Self::default();
+        style.shadow.extrusion = 24.0;
+        style.shadow.color = Color32::from_black_alpha(80);
+        style
+    }
+    
+    pub fn modern() -> Self {
+        let mut style = Self::default();
+        style.corner_radius = Rounding::same(12.0);
+        style
+    }
+    
+    pub fn dark_mode() -> Self {
+        let mut style = Self::default();
+        style.gradient_start = Color32::from_rgb(31, 41, 55);
+        style.gradient_end = Color32::from_rgb(17, 24, 39);
+        style
+    }
+    
+    pub fn skeleton() -> Self {
+        let mut style = Self::default();
+        style.is_skeleton = true;
+        style.skeleton_shimmer = true;
+        style
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum EasingType {
+    Linear,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LayoutMode {
+    Full,
+    Compact,
+    Stacked,
+}
+
+pub struct ColumnLayout {
+    pub mode: LayoutMode,
+    pub gap: f32,
+    pub min_column_width: f32,
+    pub max_column_width: f32,
 }
 
 pub struct QuickAddState {
@@ -140,62 +313,79 @@ pub struct WipLimit {
     strict: bool,
 }
 
-pub struct CardStyle {
-    pub border_color: Color32,
-    pub border_width: f32,
-    pub background_color: Color32,
-    pub shadow_blur: f32,
-    pub shadow_offset: Vec2,
-    pub elevation: f32,
-    pub priority_indicator_color: Color32,
-    pub show_overdue_badge: bool,
-    pub overdue_badge_color: Color32,
-    pub pulse_animation: bool,
-    pub show_blocked_overlay: bool,
-    pub blocked_pattern: String,
-    pub opacity: f32,
-}
 
 impl KanbanView {
     pub fn new() -> Self {
         let columns = vec![
             KanbanColumn {
+                id: Uuid::new_v4(),
                 title: "To Do".to_string(),
                 status: TaskStatus::Todo,
                 color: Color32::from_rgb(200, 200, 200),
+                tasks: Vec::new(),
                 width: 250.0,
+                min_width: 200.0,
+                max_width: 500.0,
+                is_collapsed: false,
                 collapsed: false,
                 wip_limit: None,
+                bounds: Rect::NOTHING,
+                is_resizing: false,
+                resize_handle_hovered: false,
                 visible: true,
                 position: 0,
             },
             KanbanColumn {
+                id: Uuid::new_v4(),
                 title: "In Progress".to_string(),
                 status: TaskStatus::InProgress,
                 color: Color32::from_rgb(100, 150, 255),
+                tasks: Vec::new(),
                 width: 250.0,
+                min_width: 200.0,
+                max_width: 500.0,
+                is_collapsed: false,
                 collapsed: false,
                 wip_limit: Some(3),
+                bounds: Rect::NOTHING,
+                is_resizing: false,
+                resize_handle_hovered: false,
                 visible: true,
                 position: 1,
             },
             KanbanColumn {
+                id: Uuid::new_v4(),
                 title: "Review".to_string(),
                 status: TaskStatus::Review,
                 color: Color32::from_rgb(255, 200, 100),
+                tasks: Vec::new(),
                 width: 250.0,
+                min_width: 200.0,
+                max_width: 500.0,
+                is_collapsed: false,
                 collapsed: false,
                 wip_limit: Some(2),
+                bounds: Rect::NOTHING,
+                is_resizing: false,
+                resize_handle_hovered: false,
                 visible: true,
                 position: 2,
             },
             KanbanColumn {
+                id: Uuid::new_v4(),
                 title: "Done".to_string(),
                 status: TaskStatus::Done,
                 color: Color32::from_rgb(100, 255, 100),
+                tasks: Vec::new(),
                 width: 250.0,
+                min_width: 200.0,
+                max_width: 500.0,
+                is_collapsed: false,
                 collapsed: false,
                 wip_limit: None,
+                bounds: Rect::NOTHING,
+                is_resizing: false,
+                resize_handle_hovered: false,
                 visible: true,
                 position: 3,
             },
@@ -203,7 +393,28 @@ impl KanbanView {
 
         Self {
             columns,
+            tasks: Vec::new(),
             drag_context: None,
+            selected_tasks: HashSet::new(),
+            view_bounds: Rect::NOTHING,
+            scroll_offset: Vec2::ZERO,
+            edit_mode: None,
+            editing_task_id: None,
+            edit_buffer: String::new(),
+            validation_error_message: String::new(),
+            enable_auto_save: false,
+            auto_save_delay_ms: 1000,
+            card_animations: HashMap::new(),
+            editing_column_id: None,
+            quick_add_column: None,
+            quick_add_buffer: String::new(),
+            context_menu_task_id: None,
+            context_menu_position: Pos2::ZERO,
+            context_menu_selected_index: 0,
+            delete_confirmation_task_id: None,
+            show_archived: false,
+            viewport_width: 1200.0,
+            enable_neighbor_resize: false,
             filter_options: FilterOptions::default(),
             view_preferences: ViewPreferences {
                 column_widths: HashMap::new(),

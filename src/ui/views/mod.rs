@@ -1,6 +1,11 @@
 pub mod list_view;
 pub mod kanban_view;
 pub mod kanban_view_extensions;
+pub mod kanban_drag_drop;
+pub mod kanban_visuals;
+pub mod kanban_column_layout;
+pub mod kanban_inline_edit;
+pub mod kanban_card_actions;
 pub mod map_view;
 pub mod timeline_view;
 pub mod dashboard_view;
