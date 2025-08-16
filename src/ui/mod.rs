@@ -1,5 +1,5 @@
 mod app;
-mod views;
+pub mod views;
 mod widgets;
 
 pub use app::PlonApp;
