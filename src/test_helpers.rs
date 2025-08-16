@@ -31,7 +31,7 @@ impl PlonApp {
             show_goal_editor: false,
             
             list_view: crate::ui::views::list_view::ListView::new(),
-            kanban_view: crate::ui::views::kanban_view_improved::KanbanView::new(),
+            kanban_view: crate::ui::views::kanban_view_enhanced::KanbanView::new(),
             map_view: crate::ui::views::map_view::MapView::new(),
             timeline_view: crate::ui::views::timeline_view::TimelineView::new(),
             dashboard_view: crate::ui::views::dashboard_view::DashboardView::new(),
@@ -135,11 +135,11 @@ impl PlonApp {
     }
     
     // Direct access to kanban view for comprehensive testing
-    pub fn get_kanban_view(&self) -> &crate::ui::views::kanban_view_improved::KanbanView {
+    pub fn get_kanban_view(&self) -> &crate::ui::views::kanban_view_enhanced::KanbanView {
         &self.kanban_view
     }
     
-    pub fn get_kanban_view_mut(&mut self) -> &mut crate::ui::views::kanban_view_improved::KanbanView {
+    pub fn get_kanban_view_mut(&mut self) -> &mut crate::ui::views::kanban_view_enhanced::KanbanView {
         &mut self.kanban_view
     }
     
