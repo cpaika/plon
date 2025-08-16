@@ -1,6 +1,6 @@
 mod app;
 pub mod views;
-mod widgets;
+pub mod widgets;
 
 pub use app::PlonApp;
 pub use views::{

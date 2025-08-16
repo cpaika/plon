@@ -180,7 +180,7 @@ impl PlonApp {
                     self.dashboard_view.show(ui, &self.tasks, &self.goals, &self.resources);
                 }
                 ViewType::Recurring => {
-                    self.recurring_view.show(ui);
+                    self.recurring_view.show(ui, None);
                 }
             }
         });
