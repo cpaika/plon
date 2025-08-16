@@ -1,5 +1,5 @@
 use crate::domain::{task::Task, goal::Goal, resource::Resource, dependency::{Dependency, DependencyGraph, DependencyType}};
-use crate::services::timeline_scheduler::{TimelineScheduler, TimelineSchedule};
+use crate::services::timeline_scheduler::{TimelineScheduler, TimelineSchedule, TaskSchedule};
 use crate::ui::widgets::gantt_chart::GanttChart;
 use eframe::egui::{self, Ui};
 use chrono::{Utc, Duration, NaiveDate, Local};
@@ -229,16 +229,52 @@ impl TimelineView {
                     .map(|t| (t.id, t.clone()))
                     .collect();
                 
-                // Create empty resources and schedule for now
+                // Create empty resources map for now (will be populated when resource view is added)
                 let resources = HashMap::new();
-                let schedule = TimelineSchedule {
-                    task_schedules: HashMap::new(),
-                    resource_allocations: Vec::new(),
-                    critical_path: Vec::new(),
-                    warnings: Vec::new(),
+                
+                // Create a dependency graph (empty for now, can be populated from task dependencies)
+                let graph = DependencyGraph::new();
+                
+                // Calculate schedule for tasks
+                let schedule = match self.calculate_schedule(&task_map, &resources, &graph) {
+                    Ok(sched) => sched,
+                    Err(_) => {
+                        // If scheduling fails, create a simple schedule based on task dates
+                        let mut task_schedules = HashMap::new();
+                        for (id, task) in &task_map {
+                            // Use scheduled date or due date, or default to today
+                            let start_date = if let Some(scheduled) = task.scheduled_date {
+                                scheduled.date_naive()
+                            } else if let Some(due) = task.due_date {
+                                due.date_naive() - chrono::Duration::days(
+                                    task.estimated_hours.unwrap_or(8.0) as i64 / 8
+                                )
+                            } else {
+                                self.start_date
+                            };
+                            
+                            let duration_days = (task.estimated_hours.unwrap_or(8.0) / 8.0).ceil() as i64;
+                            let end_date = start_date + chrono::Duration::days(duration_days.max(1) - 1);
+                            
+                            task_schedules.insert(*id, TaskSchedule {
+                                task_id: *id,
+                                start_date,
+                                end_date,
+                                allocated_hours: task.estimated_hours.unwrap_or(8.0),
+                                resource_id: task.assigned_resource_id,
+                            });
+                        }
+                        
+                        TimelineSchedule {
+                            task_schedules,
+                            resource_allocations: Vec::new(),
+                            critical_path: Vec::new(),
+                            warnings: Vec::new(),
+                        }
+                    }
                 };
                 
-                // Render the Gantt chart
+                // Render the Gantt chart with the calculated schedule
                 self.gantt_chart.render(ui, &task_map, &resources, &schedule);
             },
             TimelineViewMode::List => {

@@ -28,6 +28,7 @@ pub struct PlonApp {
     dashboard_view: super::views::dashboard_view::DashboardView,
     recurring_view: super::views::recurring_view::RecurringView,
     metadata_config_view: super::views::metadata_config_view::MetadataConfigView,
+    resource_view: super::views::resource_view::ResourceView,
     
     // Cache
     tasks: Vec<Task>,
@@ -47,6 +48,7 @@ pub enum ViewType {
     Dashboard,
     Recurring,
     MetadataConfig,
+    Resource,
 }
 
 impl PlonApp {
@@ -85,6 +87,7 @@ impl PlonApp {
             dashboard_view: super::views::dashboard_view::DashboardView::new(),
             recurring_view: super::views::recurring_view::RecurringView::new(),
             metadata_config_view: super::views::metadata_config_view::MetadataConfigView::new(),
+            resource_view: super::views::resource_view::ResourceView::new(),
             
             tasks: Vec::new(),
             goals: Vec::new(),
@@ -133,6 +136,7 @@ impl PlonApp {
                 ui.selectable_value(&mut self.current_view, ViewType::Timeline, "📅 Timeline");
                 ui.selectable_value(&mut self.current_view, ViewType::Dashboard, "📈 Dashboard");
                 ui.selectable_value(&mut self.current_view, ViewType::Recurring, "🔄 Recurring");
+                ui.selectable_value(&mut self.current_view, ViewType::Resource, "👥 Resources");
                 ui.selectable_value(&mut self.current_view, ViewType::MetadataConfig, "⚙️ Metadata");
                 
                 ui.separator();
@@ -191,6 +195,9 @@ impl PlonApp {
                 }
                 ViewType::MetadataConfig => {
                     self.metadata_config_view.show(ui, Some(self.task_config_service.clone()));
+                }
+                ViewType::Resource => {
+                    self.resource_view.show(ui, &mut self.resources);
                 }
             }
         });
