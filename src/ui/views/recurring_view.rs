@@ -13,6 +13,12 @@ pub struct RecurringView {
     error_message: Option<String>,
 }
 
+impl Default for RecurringView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RecurringView {
     pub fn new() -> Self {
         Self {
@@ -47,15 +53,14 @@ impl RecurringView {
                 self.editor.reset();
             }
             
-            if ui.button("🔄 Refresh").clicked() {
-                if let Some(svc) = service {
+            if ui.button("🔄 Refresh").clicked()
+                && let Some(svc) = service {
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     match rt.block_on(self.load_templates(svc)) {
                         Ok(_) => {},
                         Err(e) => self.error_message = Some(format!("Failed to load templates: {}", e)),
                     }
                 }
-            }
         });
         
         ui.separator();
@@ -64,8 +69,8 @@ impl RecurringView {
         if self.show_editor {
             ui.group(|ui| {
                 ui.heading("Create Recurring Task");
-                if self.editor.show(ui) {
-                    if let Some(svc) = service {
+                if self.editor.show(ui)
+                    && let Some(svc) = service {
                         let rt = tokio::runtime::Runtime::new().unwrap();
                         match rt.block_on(self.create_template(svc)) {
                             Ok(_) => {
@@ -77,7 +82,6 @@ impl RecurringView {
                             Err(e) => self.error_message = Some(format!("Failed to create template: {}", e)),
                         }
                     }
-                }
                 
                 if ui.button("Cancel").clicked() {
                     self.show_editor = false;
@@ -119,8 +123,8 @@ impl RecurringView {
                 
                 // Actions
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("🗑️").on_hover_text("Delete").clicked() {
-                        if let Some(svc) = service {
+                    if ui.button("🗑️").on_hover_text("Delete").clicked()
+                        && let Some(svc) = service {
                             let rt = tokio::runtime::Runtime::new().unwrap();
                             match rt.block_on(self.delete_template(svc, template.id)) {
                                 Ok(_) => {
@@ -129,12 +133,11 @@ impl RecurringView {
                                 Err(e) => self.error_message = Some(format!("Failed to delete: {}", e)),
                             }
                         }
-                    }
                     
                     let toggle_text = if template.active { "⏸️" } else { "▶️" };
                     let toggle_hover = if template.active { "Deactivate" } else { "Activate" };
-                    if ui.button(toggle_text).on_hover_text(toggle_hover).clicked() {
-                        if let Some(svc) = service {
+                    if ui.button(toggle_text).on_hover_text(toggle_hover).clicked()
+                        && let Some(svc) = service {
                             let rt = tokio::runtime::Runtime::new().unwrap();
                             match rt.block_on(self.toggle_template(svc, template.id)) {
                                 Ok(_) => {
@@ -143,7 +146,6 @@ impl RecurringView {
                                 Err(e) => self.error_message = Some(format!("Failed to toggle: {}", e)),
                             }
                         }
-                    }
                 });
             });
             

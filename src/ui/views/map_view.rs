@@ -1,10 +1,10 @@
-use crate::domain::{task::Task, goal::Goal, dependency::{Dependency, DependencyType, DependencyGraph}, comment::Comment};
+use crate::domain::{task::Task, goal::Goal, dependency::{Dependency, DependencyType, DependencyGraph}};
 use crate::services::summarization::{SummarizationService, SummaryCache};
 use crate::services::DependencyService;
 use crate::ui::widgets::task_detail_modal::{TaskDetailModal, TaskAction};
 use crate::repository::comment_repository::CommentRepository;
 pub use crate::services::summarization::SummarizationLevel;
-use eframe::egui::{self, Color32, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use std::collections::HashMap;
 use uuid::Uuid;
 use std::sync::Arc;
@@ -85,6 +85,12 @@ struct TaskCluster {
     center: Vec2,
     tasks: Vec<Uuid>,
     summary: String,
+}
+
+impl Default for MapView {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MapView {
@@ -243,8 +249,8 @@ impl MapView {
         self.draw_dependencies(&painter, tasks, to_screen);
         
         // Draw dependency preview if creating
-        if self.creating_dependency {
-            if let (Some(source_id), Some(preview_end)) = (self.dependency_source, self.dependency_preview_end) {
+        if self.creating_dependency
+            && let (Some(source_id), Some(preview_end)) = (self.dependency_source, self.dependency_preview_end) {
                 // Find source task position
                 if let Some(source_task) = tasks.iter().find(|t| t.id == source_id) {
                     let source_pos = Vec2::new(source_task.position.x as f32, source_task.position.y as f32);
@@ -271,7 +277,6 @@ impl MapView {
                     );
                 }
             }
-        }
 
         // Draw goals
         for goal in goals.iter_mut() {
@@ -290,21 +295,19 @@ impl MapView {
         }
 
         // Handle task creation on double-click
-        if response.double_clicked() && !self.is_panning && !self.creating_dependency {
-            if let Some(pointer_pos) = response.interact_pointer_pos() {
+        if response.double_clicked() && !self.is_panning && !self.creating_dependency
+            && let Some(pointer_pos) = response.interact_pointer_pos() {
                 let world_pos = (pointer_pos - center) / self.zoom_level - self.camera_pos;
                 let mut new_task = Task::new("New Task".to_string(), String::new());
                 new_task.set_position(world_pos.x as f64, world_pos.y as f64);
                 tasks.push(new_task);
             }
-        }
         
         // Cancel dependency creation on escape
-        if self.creating_dependency {
-            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        if self.creating_dependency
+            && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 self.cancel_dependency_creation();
             }
-        }
         
         // Show help text
         if !self.creating_dependency {
@@ -471,7 +474,7 @@ impl MapView {
                     painter.text(
                         rect.center() + Vec2::new(0.0, 10.0 * self.zoom_level),
                         egui::Align2::CENTER_CENTER,
-                        &format!("{}/{}", completed, total),
+                        format!("{}/{}", completed, total),
                         egui::FontId::proportional(10.0 * self.zoom_level),
                         Color32::from_rgb(80, 80, 80),
                     );
@@ -503,7 +506,7 @@ impl MapView {
                     painter.text(
                         rect.center() + Vec2::new(0.0, 20.0 * self.zoom_level),
                         egui::Align2::CENTER_CENTER,
-                        &format!("Progress: {}/{}", completed, total),
+                        format!("Progress: {}/{}", completed, total),
                         egui::FontId::proportional(10.0 * self.zoom_level),
                         Color32::from_rgb(80, 80, 80),
                     );
@@ -554,15 +557,15 @@ impl MapView {
         }
         
         // Complete dependency creation on left dot (incoming)
-        if left_dot_response.hovered() && self.creating_dependency {
-            if let Some(source_id) = self.dependency_source {
-                if source_id != task.id {
+        if left_dot_response.hovered() && self.creating_dependency
+            && let Some(source_id) = self.dependency_source
+                && source_id != task.id {
                     // Highlight the target dot
                     painter.circle_stroke(left_dot_pos, dot_radius + 3.0, Stroke::new(3.0, Color32::from_rgb(50, 200, 50)));
                     
                     // Complete on mouse release
-                    if ui.input(|i| i.pointer.any_released()) {
-                        if let Some(dep) = self.complete_dependency_creation(task.id) {
+                    if ui.input(|i| i.pointer.any_released())
+                        && let Some(dep) = self.complete_dependency_creation(task.id) {
                             // Save to database via dependency service
                             if let Some(service) = &self.dependency_service {
                                 let service_clone = service.clone();
@@ -581,10 +584,7 @@ impl MapView {
                                 });
                             }
                         }
-                    }
                 }
-            }
-        }
         
         // Update preview while dragging
         if self.creating_dependency {
@@ -692,7 +692,7 @@ impl MapView {
         painter.text(
             rect.min + Vec2::new(10.0 * self.zoom_level, 30.0 * self.zoom_level),
             egui::Align2::LEFT_TOP,
-            &format!("Progress: {:.0}%", progress),
+            format!("Progress: {:.0}%", progress),
             egui::FontId::proportional(12.0 * self.zoom_level),
             Color32::from_rgb(100, 100, 100),
         );
@@ -795,9 +795,9 @@ impl MapView {
         }
         
         // Draw dependency preview if creating
-        if self.creating_dependency {
-            if let (Some(source_id), Some(preview_end)) = (self.dependency_source, self.dependency_preview_end) {
-                if let Some(&source_pos) = task_positions.get(&source_id) {
+        if self.creating_dependency
+            && let (Some(source_id), Some(preview_end)) = (self.dependency_source, self.dependency_preview_end)
+                && let Some(&source_pos) = task_positions.get(&source_id) {
                     let task_size = Vec2::new(150.0, 80.0);
                     let start_screen = to_screen(source_pos + Vec2::new(task_size.x / 2.0, 0.0));
                     
@@ -807,8 +807,6 @@ impl MapView {
                         Stroke::new(2.0, Color32::from_rgba_unmultiplied(100, 100, 200, 128)),
                     );
                 }
-            }
-        }
     }
 
     fn draw_clusters(&mut self, painter: &egui::Painter, ui: &mut Ui, tasks: &[Task], to_screen: &impl Fn(Vec2) -> Pos2, clip_rect: Rect) {
@@ -842,7 +840,7 @@ impl MapView {
             painter.text(
                 screen_pos + Vec2::new(0.0, 20.0 * self.zoom_level),
                 egui::Align2::CENTER_CENTER,
-                &format!("{} tasks", cluster.tasks.len()),
+                format!("{} tasks", cluster.tasks.len()),
                 egui::FontId::proportional(10.0 * self.zoom_level),
                 Color32::from_rgb(80, 80, 80),
             );
@@ -918,7 +916,7 @@ impl MapView {
                 
                 cluster_map
                     .entry((cluster_x, cluster_y))
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(task.id);
             }
         }
@@ -1061,8 +1059,8 @@ impl MapView {
     }
     
     pub fn complete_dependency_creation(&mut self, target_task_id: Uuid) -> Option<Dependency> {
-        if let Some(source_id) = self.dependency_source {
-            if source_id != target_task_id {
+        if let Some(source_id) = self.dependency_source
+            && source_id != target_task_id {
                 let dependency = Dependency::new(source_id, target_task_id, DependencyType::FinishToStart);
                 
                 // Try to add to graph
@@ -1073,7 +1071,6 @@ impl MapView {
                     return Some(dependency);
                 }
             }
-        }
         self.cancel_dependency_creation();
         None
     }

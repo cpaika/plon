@@ -27,6 +27,12 @@ pub struct MetadataSchema {
     fields: HashMap<String, MetadataField>,
 }
 
+impl Default for MetadataSchema {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MetadataSchema {
     pub fn new() -> Self {
         Self {
@@ -54,11 +60,10 @@ impl MetadataSchema {
 
         // Validate field values
         for (key, value) in metadata {
-            if let Some(field) = self.fields.get(key) {
-                if let Err(e) = self.validate_field_value(field, value) {
+            if let Some(field) = self.fields.get(key)
+                && let Err(e) = self.validate_field_value(field, value) {
                     errors.push(e);
                 }
-            }
         }
 
         if errors.is_empty() {

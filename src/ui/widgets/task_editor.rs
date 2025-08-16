@@ -45,10 +45,8 @@ pub fn show_task_editor(ui: &mut Ui, task: &mut Task, resources: &[Resource]) {
             if let Some(mut hours) = task.estimated_hours {
                 ui.add(egui::DragValue::new(&mut hours).speed(0.1));
                 task.estimated_hours = Some(hours);
-            } else {
-                if ui.button("Add estimate").clicked() {
-                    task.estimated_hours = Some(1.0);
-                }
+            } else if ui.button("Add estimate").clicked() {
+                task.estimated_hours = Some(1.0);
             }
         });
         

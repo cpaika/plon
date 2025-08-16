@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use uuid::Uuid;
-use super::task::TaskStatus;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskConfiguration {
@@ -131,6 +130,7 @@ pub enum ValidationRule {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct MetadataSchema {
     pub fields: HashMap<String, MetadataFieldConfig>,
     pub field_groups: Vec<FieldGroup>,
@@ -228,11 +228,10 @@ impl TaskConfiguration {
                 }
             }
             ValidationRule::Regex(pattern) => {
-                if let Ok(re) = regex::Regex::new(pattern) {
-                    if !re.is_match(value) {
+                if let Ok(re) = regex::Regex::new(pattern)
+                    && !re.is_match(value) {
                         return Err(format!("{} has invalid format", field.display_name));
                     }
-                }
             }
             ValidationRule::UniqueValue => {
                 // This would need to be checked against the database
@@ -268,11 +267,10 @@ impl TaskConfiguration {
                 let field_value = context.metadata.get(field)
                     .ok_or_else(|| format!("Required field {} is missing", field))?;
                 
-                if let Some(expected) = value {
-                    if field_value != expected {
+                if let Some(expected) = value
+                    && field_value != expected {
                         return Err(format!("Field {} must be {}", field, expected));
                     }
-                }
             }
             TransitionCondition::RequireAllSubtasksComplete => {
                 if !context.all_subtasks_complete {
@@ -292,14 +290,6 @@ pub struct TransitionContext {
     pub user_role: Option<String>,
 }
 
-impl Default for MetadataSchema {
-    fn default() -> Self {
-        Self {
-            fields: HashMap::new(),
-            field_groups: Vec::new(),
-        }
-    }
-}
 
 impl Default for StateMachine {
     fn default() -> Self {
@@ -419,7 +409,7 @@ pub fn create_software_development_config() -> TaskConfiguration {
         searchable: false,
     });
 
-    let mut review_state = StateDefinition {
+    let review_state = StateDefinition {
         name: "review".to_string(),
         display_name: "In Review".to_string(),
         color: "#8b5cf6".to_string(),

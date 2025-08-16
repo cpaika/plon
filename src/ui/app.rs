@@ -1,42 +1,43 @@
 use crate::domain::{task::Task, goal::Goal, resource::Resource};
 use crate::repository::Repository;
 use crate::services::{TaskService, GoalService, ResourceService, TaskConfigService};
-use eframe::egui::{self, Context, Ui};
+use eframe::egui::{self, Context};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
 pub struct PlonApp {
-    repository: Arc<Repository>,
-    task_service: Arc<TaskService>,
-    goal_service: Arc<GoalService>,
-    resource_service: Arc<ResourceService>,
-    task_config_service: Arc<TaskConfigService>,
+    pub(crate) repository: Arc<Repository>,
+    pub(crate) task_service: Arc<TaskService>,
+    pub(crate) goal_service: Arc<GoalService>,
+    pub(crate) resource_service: Arc<ResourceService>,
+    pub(crate) task_config_service: Arc<TaskConfigService>,
     
     // UI State
-    current_view: ViewType,
-    selected_task_id: Option<Uuid>,
-    selected_goal_id: Option<Uuid>,
-    show_task_editor: bool,
-    show_goal_editor: bool,
+    pub(crate) current_view: ViewType,
+    pub(crate) selected_task_id: Option<Uuid>,
+    pub(crate) selected_goal_id: Option<Uuid>,
+    pub(crate) show_task_editor: bool,
+    pub(crate) show_goal_editor: bool,
     
     // View components
-    list_view: super::views::list_view::ListView,
-    kanban_view: super::views::kanban_view::KanbanView,
-    map_view: super::views::map_view::MapView,
-    timeline_view: super::views::timeline_view::TimelineView,
-    dashboard_view: super::views::dashboard_view::DashboardView,
-    recurring_view: super::views::recurring_view::RecurringView,
-    metadata_config_view: super::views::metadata_config_view::MetadataConfigView,
-    resource_view: super::views::resource_view::ResourceView,
+    pub(crate) list_view: super::views::list_view::ListView,
+    pub(crate) kanban_view: super::views::kanban_view_improved::KanbanView,
+    pub(crate) map_view: super::views::map_view::MapView,
+    pub(crate) timeline_view: super::views::timeline_view::TimelineView,
+    pub(crate) dashboard_view: super::views::dashboard_view::DashboardView,
+    pub(crate) recurring_view: super::views::recurring_view::RecurringView,
+    pub(crate) metadata_config_view: super::views::metadata_config_view::MetadataConfigView,
+    pub(crate) resource_view: super::views::resource_view::ResourceView,
+    pub(crate) gantt_view: super::views::gantt_view::GanttView,
+    pub(crate) goal_view: super::views::goal_view::GoalView,
     
     // Cache
-    tasks: Vec<Task>,
-    goals: Vec<Goal>,
-    resources: Vec<Resource>,
+    pub(crate) tasks: Vec<Task>,
+    pub(crate) goals: Vec<Goal>,
+    pub(crate) resources: Vec<Resource>,
     
     // Runtime
-    runtime: tokio::runtime::Runtime,
+    pub(crate) runtime: tokio::runtime::Runtime,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -45,7 +46,9 @@ pub enum ViewType {
     Kanban,
     Map,
     Timeline,
+    Gantt,
     Dashboard,
+    Goals,
     Recurring,
     MetadataConfig,
     Resource,
@@ -81,13 +84,15 @@ impl PlonApp {
             show_goal_editor: false,
             
             list_view: super::views::list_view::ListView::new(),
-            kanban_view: super::views::kanban_view::KanbanView::new(),
+            kanban_view: super::views::kanban_view_improved::KanbanView::new(),
             map_view: super::views::map_view::MapView::new(),
             timeline_view: super::views::timeline_view::TimelineView::new(),
             dashboard_view: super::views::dashboard_view::DashboardView::new(),
             recurring_view: super::views::recurring_view::RecurringView::new(),
             metadata_config_view: super::views::metadata_config_view::MetadataConfigView::new(),
             resource_view: super::views::resource_view::ResourceView::new(),
+            gantt_view: super::views::gantt_view::GanttView::new(),
+            goal_view: super::views::goal_view::GoalView::new(),
             
             tasks: Vec::new(),
             goals: Vec::new(),
@@ -134,7 +139,9 @@ impl PlonApp {
                 ui.selectable_value(&mut self.current_view, ViewType::Kanban, "📊 Kanban");
                 ui.selectable_value(&mut self.current_view, ViewType::Map, "🗺️ Map");
                 ui.selectable_value(&mut self.current_view, ViewType::Timeline, "📅 Timeline");
+                ui.selectable_value(&mut self.current_view, ViewType::Gantt, "📊 Gantt");
                 ui.selectable_value(&mut self.current_view, ViewType::Dashboard, "📈 Dashboard");
+                ui.selectable_value(&mut self.current_view, ViewType::Goals, "🎯 Goals");
                 ui.selectable_value(&mut self.current_view, ViewType::Recurring, "🔄 Recurring");
                 ui.selectable_value(&mut self.current_view, ViewType::Resource, "👥 Resources");
                 ui.selectable_value(&mut self.current_view, ViewType::MetadataConfig, "⚙️ Metadata");
@@ -187,8 +194,20 @@ impl PlonApp {
                 ViewType::Timeline => {
                     self.timeline_view.show(ui, &self.tasks, &self.goals);
                 }
+                ViewType::Gantt => {
+                    // Load dependencies for Gantt view
+                    let dependencies = self.runtime.block_on(async {
+                        self.repository.dependencies.list_all().await.unwrap_or_default()
+                    });
+                    self.gantt_view.show(ui, &self.tasks, &self.resources, &dependencies);
+                }
                 ViewType::Dashboard => {
                     self.dashboard_view.show(ui, &self.tasks, &self.goals, &self.resources);
+                }
+                ViewType::Goals => {
+                    if let Some(action) = self.goal_view.show(ui, &mut self.goals) {
+                        self.handle_goal_action(action);
+                    }
                 }
                 ViewType::Recurring => {
                     self.recurring_view.show(ui, None);
@@ -254,6 +273,59 @@ impl PlonApp {
                         self.show_goal_editor = false;
                     }
                 });
+        }
+    }
+}
+
+impl PlonApp {
+    fn handle_goal_action(&mut self, action: super::views::goal_view::GoalAction) {
+        use super::views::goal_view::GoalAction;
+        
+        match action {
+            GoalAction::Create { title, description, parent_id } => {
+                let goal_service = self.goal_service.clone();
+                let mut goal = Goal::new(title, description);
+                goal.parent_goal_id = parent_id;
+                
+                let goal_clone = goal.clone();
+                self.runtime.spawn(async move {
+                    goal_service.create(goal_clone).await.ok();
+                });
+                
+                self.goals.push(goal);
+            }
+            GoalAction::Update { id, title, description } => {
+                if let Some(goal) = self.goals.iter_mut().find(|g| g.id == id) {
+                    goal.title = title;
+                    goal.description = description;
+                    goal.updated_at = chrono::Utc::now();
+                    
+                    let goal_service = self.goal_service.clone();
+                    let goal_clone = goal.clone();
+                    self.runtime.spawn(async move {
+                        goal_service.update(goal_clone).await.ok();
+                    });
+                }
+            }
+            GoalAction::Delete { id } => {
+                self.goals.retain(|g| g.id != id);
+                
+                let goal_service = self.goal_service.clone();
+                self.runtime.spawn(async move {
+                    goal_service.delete(id).await.ok();
+                });
+            }
+            GoalAction::ChangeStatus { id, status } => {
+                if let Some(goal) = self.goals.iter_mut().find(|g| g.id == id) {
+                    goal.update_status(status);
+                    
+                    let goal_service = self.goal_service.clone();
+                    let goal_clone = goal.clone();
+                    self.runtime.spawn(async move {
+                        goal_service.update(goal_clone).await.ok();
+                    });
+                }
+            }
         }
     }
 }

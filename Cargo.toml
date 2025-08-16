@@ -7,29 +7,10 @@ edition = "2024"
 name = "plon"
 path = "src/lib.rs"
 
+# Main application - just run: cargo run
 [[bin]]
 name = "plon"
 path = "src/main.rs"
-
-[[bin]]
-name = "test_gui"
-path = "src/test_gui.rs"
-
-[[bin]]
-name = "plon_simple"
-path = "src/simple_main.rs"
-
-[[bin]]
-name = "plon_fixed"
-path = "src/main_fixed.rs"
-
-[[bin]]
-name = "test_persistence"
-path = "test_persistence.rs"
-
-[[bin]]
-name = "test_dependencies"
-path = "test_dependencies.rs"
 
 [dependencies]
 # Core

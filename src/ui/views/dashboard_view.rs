@@ -3,6 +3,12 @@ use eframe::egui::{self, Ui};
 
 pub struct DashboardView {}
 
+impl Default for DashboardView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DashboardView {
     pub fn new() -> Self {
         Self {}

@@ -69,11 +69,10 @@ impl Resource {
         }
 
         for (key, value) in &self.metadata_filters {
-            if let Some(task_value) = task_metadata.get(key) {
-                if task_value == value {
+            if let Some(task_value) = task_metadata.get(key)
+                && task_value == value {
                     return true;
                 }
-            }
         }
         false
     }

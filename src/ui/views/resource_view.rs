@@ -1,7 +1,6 @@
 use crate::domain::resource::Resource;
 use eframe::egui::{self, Ui, Color32};
 use uuid::Uuid;
-use std::collections::HashSet;
 
 pub struct ResourceView {
     selected_resource: Option<Uuid>,
@@ -11,6 +10,12 @@ pub struct ResourceView {
     show_create_dialog: bool,
     new_skill: String,
     filter_text: String,
+}
+
+impl Default for ResourceView {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResourceView {
@@ -69,8 +74,8 @@ impl ResourceView {
                         });
                     
                     ui.horizontal(|ui| {
-                        if ui.button("Create").clicked() {
-                            if !self.new_resource_name.trim().is_empty() {
+                        if ui.button("Create").clicked()
+                            && !self.new_resource_name.trim().is_empty() {
                                 let resource = Resource::new(
                                     self.new_resource_name.clone(),
                                     self.new_resource_role.clone(),
@@ -79,7 +84,6 @@ impl ResourceView {
                                 resources.push(resource);
                                 self.show_create_dialog = false;
                             }
-                        }
                         
                         if ui.button("Cancel").clicked() {
                             self.show_create_dialog = false;

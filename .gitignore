@@ -1,2 +1,6 @@
 .conductor/**
 target/**
+**/target/**
+plan.db
+plon.db-shm
+plon.db-wal

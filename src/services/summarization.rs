@@ -58,6 +58,12 @@ struct CacheEntry {
     access_count: usize,
 }
 
+impl Default for SummarizationService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SummarizationService {
     pub fn new() -> Self {
         Self {

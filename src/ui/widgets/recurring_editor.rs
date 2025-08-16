@@ -1,8 +1,7 @@
 use eframe::egui::{self, Ui};
-use chrono::{NaiveTime, Weekday, NaiveDate, Utc, Timelike};
+use chrono::{NaiveTime, Weekday, NaiveDate, Timelike};
 use crate::domain::recurring::{RecurringTaskTemplate, RecurrenceRule, RecurrencePattern};
 use crate::domain::task::Priority;
-use std::collections::HashMap;
 
 pub struct RecurringEditor {
     pub title: String,
@@ -17,6 +16,12 @@ pub struct RecurringEditor {
     pub max_occurrences: Option<u32>,
     pub priority: Priority,
     pub estimated_hours: Option<f32>,
+}
+
+impl Default for RecurringEditor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RecurringEditor {
@@ -155,10 +160,8 @@ impl RecurringEditor {
                         ui.add(egui::DragValue::new(&mut hours).speed(0.1).clamp_range(0.0..=100.0));
                     });
                     self.estimated_hours = Some(hours);
-                } else {
-                    if ui.button("Set estimate").clicked() {
-                        self.estimated_hours = Some(1.0);
-                    }
+                } else if ui.button("Set estimate").clicked() {
+                    self.estimated_hours = Some(1.0);
                 }
             });
             
@@ -176,10 +179,8 @@ impl RecurringEditor {
                     if ui.button("Remove").clicked() {
                         self.max_occurrences = None;
                     }
-                } else {
-                    if ui.button("Add max occurrences").clicked() {
-                        self.max_occurrences = Some(10);
-                    }
+                } else if ui.button("Add max occurrences").clicked() {
+                    self.max_occurrences = Some(10);
                 }
             });
             
@@ -236,11 +237,11 @@ impl RecurringEditor {
         match self.pattern {
             RecurrencePattern::Weekly => !self.selected_days.is_empty(),
             RecurrencePattern::Monthly => {
-                self.day_of_month.map_or(false, |d| d >= 1 && d <= 31)
+                self.day_of_month.is_some_and(|d| (1..=31).contains(&d))
             }
             RecurrencePattern::Yearly => {
-                self.month_of_year.map_or(false, |m| m >= 1 && m <= 12) &&
-                self.day_of_month.map_or(false, |d| d >= 1 && d <= 31)
+                self.month_of_year.is_some_and(|m| (1..=12).contains(&m)) &&
+                self.day_of_month.is_some_and(|d| (1..=31).contains(&d))
             }
             _ => true,
         }

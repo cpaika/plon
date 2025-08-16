@@ -6,6 +6,12 @@ pub struct ListView {
     selected_status: Option<String>,
 }
 
+impl Default for ListView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ListView {
     pub fn new() -> Self {
         Self {

@@ -40,6 +40,12 @@ impl Dependency {
     }
 }
 
+impl Default for DependencyGraph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DependencyGraph {
     pub fn new() -> Self {
         Self {
@@ -75,12 +81,11 @@ impl DependencyGraph {
 
     pub fn remove_dependency(&mut self, from_task_id: Uuid, to_task_id: Uuid) -> bool {
         if let (Some(&from_node), Some(&to_node)) = 
-            (self.node_map.get(&from_task_id), self.node_map.get(&to_task_id)) {
-            if let Some(edge) = self.graph.find_edge(from_node, to_node) {
+            (self.node_map.get(&from_task_id), self.node_map.get(&to_task_id))
+            && let Some(edge) = self.graph.find_edge(from_node, to_node) {
                 self.graph.remove_edge(edge);
                 return true;
             }
-        }
         false
     }
 

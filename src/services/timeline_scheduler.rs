@@ -1,7 +1,7 @@
 use crate::domain::{task::Task, resource::{Resource, ResourceAllocation}, dependency::{DependencyGraph, DependencyType}};
 use chrono::{NaiveDate, Datelike};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,7 +13,7 @@ pub struct TaskSchedule {
     pub allocated_hours: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TimelineSchedule {
     pub task_schedules: HashMap<Uuid, TaskSchedule>,
     pub resource_allocations: Vec<ResourceAllocation>,
@@ -46,6 +46,12 @@ pub struct TimelineScheduler {
     resource_availability: HashMap<Uuid, HashMap<NaiveDate, f32>>,
 }
 
+impl Default for TimelineScheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TimelineScheduler {
     pub fn new() -> Self {
         Self {
@@ -66,7 +72,7 @@ impl TimelineScheduler {
         
         // Initialize resource availability
         self.resource_availability.clear();
-        for (resource_id, _) in resources {
+        for resource_id in resources.keys() {
             self.resource_availability.insert(*resource_id, HashMap::new());
         }
         
@@ -85,7 +91,7 @@ impl TimelineScheduler {
             .collect();
         
         // If no sorted tasks but we have tasks, add them
-        let mut tasks_to_schedule = if sorted_tasks.is_empty() && !tasks.is_empty() {
+        let tasks_to_schedule = if sorted_tasks.is_empty() && !tasks.is_empty() {
             tasks.keys().cloned().collect()
         } else {
             sorted_tasks
@@ -222,7 +228,7 @@ impl TimelineScheduler {
         while remaining_hours > 0.0 {
             // Skip weekends
             if current_date.weekday().num_days_from_monday() >= 5 {
-                current_date = current_date + chrono::Duration::days(1);
+                current_date += chrono::Duration::days(1);
                 continue;
             }
             
@@ -247,7 +253,7 @@ impl TimelineScheduler {
             }
             
             if remaining_hours > 0.0 {
-                current_date = current_date + chrono::Duration::days(1);
+                current_date += chrono::Duration::days(1);
             }
         }
         
@@ -279,7 +285,7 @@ impl TimelineScheduler {
                 days_added += 1;
             }
             if days_added < days_needed {
-                end_date = end_date + chrono::Duration::days(1);
+                end_date += chrono::Duration::days(1);
             }
         }
         

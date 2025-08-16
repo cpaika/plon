@@ -52,7 +52,7 @@ impl Goal {
             id: Uuid::new_v4(),
             title,
             description,
-            status: GoalStatus::Active,
+            status: GoalStatus::NotStarted,
             created_at: now,
             updated_at: now,
             target_date: None,
@@ -168,6 +168,10 @@ impl Goal {
         self.updated_at = Utc::now();
     }
 
+    pub fn days_until_target(&self) -> Option<i64> {
+        self.target_date.map(|target| (target - Utc::now()).num_days())
+    }
+
     pub fn is_at_risk(&self) -> bool {
         if let Some(target) = self.target_date {
             let days_remaining = (target - Utc::now()).num_days();
@@ -200,7 +204,7 @@ mod tests {
         let goal = Goal::new("Q1 Goals".to_string(), "Goals for Q1".to_string());
         assert_eq!(goal.title, "Q1 Goals");
         assert_eq!(goal.description, "Goals for Q1");
-        assert_eq!(goal.status, GoalStatus::Active);
+        assert_eq!(goal.status, GoalStatus::NotStarted);
         assert!(goal.task_ids.is_empty());
         assert_eq!(goal.color, "#4A90E2");
     }
@@ -213,7 +217,7 @@ mod tests {
         
         goal.add_task(task_id1);
         assert!(goal.task_ids.contains(&task_id1));
-        assert_eq!(goal.status, GoalStatus::Active);
+        assert_eq!(goal.status, GoalStatus::NotStarted);
         
         goal.add_task(task_id2);
         assert_eq!(goal.task_ids.len(), 2);
@@ -228,7 +232,7 @@ mod tests {
     #[test]
     fn test_update_status() {
         let mut goal = Goal::new("Goal".to_string(), "".to_string());
-        assert_eq!(goal.status, GoalStatus::Active);
+        assert_eq!(goal.status, GoalStatus::NotStarted);
         assert!(goal.completed_at.is_none());
         
         goal.update_status(GoalStatus::InProgress);

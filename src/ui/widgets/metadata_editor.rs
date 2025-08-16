@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use eframe::egui::{self, Ui};
+use eframe::egui::Ui;
 
 pub fn show_metadata_editor(ui: &mut Ui, metadata: &mut HashMap<String, String>) {
     ui.label("Metadata:");

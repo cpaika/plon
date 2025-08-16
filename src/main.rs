@@ -9,14 +9,19 @@ use eframe::egui;
 use repository::Repository;
 use ui::PlonApp;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     // Initialize logging
     tracing_subscriber::fmt::init();
 
+    // Create a runtime for database initialization
+    let rt = tokio::runtime::Runtime::new()?;
+    
     // Initialize database
-    let pool = repository::database::init_database("plon.db").await?;
+    let pool = rt.block_on(repository::database::init_database("plon.db"))?;
     let repository = Repository::new(pool);
+    
+    // Shutdown the initialization runtime
+    drop(rt);
 
     // Run the native app
     let options = eframe::NativeOptions {
@@ -29,7 +34,7 @@ async fn main() -> Result<()> {
     eframe::run_native(
         "Plon - Project Management",
         options,
-        Box::new(|cc| Box::new(PlonApp::new(cc, repository))),
+        Box::new(move |cc| Box::new(PlonApp::new(cc, repository))),
     )
     .map_err(|e| anyhow::anyhow!("Failed to run app: {}", e))?;
 

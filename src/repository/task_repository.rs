@@ -2,7 +2,6 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde_json;
 use sqlx::{Row, SqlitePool};
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -28,8 +27,8 @@ impl TaskRepository {
                 id, title, description, status, priority, metadata, tags,
                 created_at, updated_at, due_date, scheduled_date, completed_at,
                 estimated_hours, actual_hours, assigned_resource_id,
-                goal_id, parent_task_id, position_x, position_y, configuration_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                goal_id, parent_task_id, position_x, position_y, is_archived, assignee, configuration_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(task.id.to_string())
@@ -51,6 +50,8 @@ impl TaskRepository {
         .bind(task.parent_task_id.map(|id| id.to_string()))
         .bind(task.position.x)
         .bind(task.position.y)
+        .bind(if task.is_archived { 1 } else { 0 })
+        .bind(task.assignee.as_ref())
         .bind(task.configuration_id.map(|id| id.to_string()))
         .execute(&mut *tx)
         .await?;
@@ -107,7 +108,7 @@ impl TaskRepository {
                 metadata = ?, tags = ?, updated_at = ?, due_date = ?,
                 scheduled_date = ?, completed_at = ?, estimated_hours = ?,
                 actual_hours = ?, assigned_resource_id = ?, goal_id = ?,
-                parent_task_id = ?, position_x = ?, position_y = ?, configuration_id = ?
+                parent_task_id = ?, position_x = ?, position_y = ?, is_archived = ?, assignee = ?, configuration_id = ?
             WHERE id = ?
             "#,
         )
@@ -128,6 +129,8 @@ impl TaskRepository {
         .bind(task.parent_task_id.map(|id| id.to_string()))
         .bind(task.position.x)
         .bind(task.position.y)
+        .bind(if task.is_archived { 1 } else { 0 })
+        .bind(task.assignee.as_ref())
         .bind(task.configuration_id.map(|id| id.to_string()))
         .bind(task.id.to_string())
         .execute(&mut *tx)
@@ -193,7 +196,7 @@ impl TaskRepository {
             SELECT id, title, description, status, priority, metadata, tags,
                    created_at, updated_at, due_date, scheduled_date, completed_at,
                    estimated_hours, actual_hours, assigned_resource_id,
-                   goal_id, parent_task_id, position_x, position_y, configuration_id
+                   goal_id, parent_task_id, position_x, position_y, is_archived, assignee, configuration_id
             FROM tasks WHERE id = ?
             "#,
         )
@@ -218,9 +221,11 @@ impl TaskRepository {
             .await?;
 
             for subtask_row in subtasks {
+                let description: String = subtask_row.get("description");
                 task.subtasks.push(SubTask {
                     id: Uuid::parse_str(subtask_row.get("id"))?,
-                    description: subtask_row.get("description"),
+                    title: description.clone(),
+                    description,
                     completed: subtask_row.get::<i32, _>("completed") != 0,
                     created_at: DateTime::parse_from_rfc3339(subtask_row.get("created_at"))?.with_timezone(&Utc),
                     completed_at: subtask_row.get::<Option<String>, _>("completed_at")
@@ -268,7 +273,7 @@ impl TaskRepository {
                    t.metadata, t.tags, t.created_at, t.updated_at, t.due_date,
                    t.scheduled_date, t.completed_at, t.estimated_hours, t.actual_hours,
                    t.assigned_resource_id, t.goal_id, t.parent_task_id,
-                   t.position_x, t.position_y, t.configuration_id
+                   t.position_x, t.position_y, t.is_archived, t.assignee, t.configuration_id
             FROM tasks t
             WHERE 1=1
             "#,
@@ -325,9 +330,11 @@ impl TaskRepository {
             .await?;
 
             for subtask_row in subtasks {
+                let description: String = subtask_row.get("description");
                 task.subtasks.push(SubTask {
                     id: Uuid::parse_str(subtask_row.get("id"))?,
-                    description: subtask_row.get("description"),
+                    title: description.clone(),
+                    description,
                     completed: subtask_row.get::<i32, _>("completed") != 0,
                     created_at: DateTime::parse_from_rfc3339(subtask_row.get("created_at"))?.with_timezone(&Utc),
                     completed_at: subtask_row.get::<Option<String>, _>("completed_at")
@@ -349,7 +356,7 @@ impl TaskRepository {
                    t.metadata, t.tags, t.created_at, t.updated_at, t.due_date,
                    t.scheduled_date, t.completed_at, t.estimated_hours, t.actual_hours,
                    t.assigned_resource_id, t.goal_id, t.parent_task_id,
-                   t.position_x, t.position_y, t.configuration_id
+                   t.position_x, t.position_y, t.is_archived, t.assignee, t.configuration_id
             FROM tasks t
             JOIN tasks_spatial s ON s.id = (SELECT rowid FROM tasks WHERE id = t.id)
             WHERE s.min_x <= ? AND s.max_x >= ?
@@ -404,6 +411,8 @@ impl TaskRepository {
                 y: row.get("position_y"),
             },
             subtasks: Vec::new(), // Will be filled separately
+            is_archived: row.get::<Option<i32>, _>("is_archived").unwrap_or(0) != 0,
+            assignee: row.get::<Option<String>, _>("assignee"),
             configuration_id: row.get::<Option<String>, _>("configuration_id")
                 .and_then(|s| Uuid::parse_str(&s).ok()),
         })

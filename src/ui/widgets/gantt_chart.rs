@@ -1,7 +1,7 @@
 use crate::domain::{task::Task, resource::Resource};
 use crate::services::timeline_scheduler::{TaskSchedule, TimelineSchedule};
 use chrono::{NaiveDate, Datelike, Local};
-use eframe::egui::{self, Color32, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -70,6 +70,12 @@ pub struct GanttChart {
     start_date: NaiveDate,
     critical_path: HashSet<Uuid>,
     milestones: Vec<Milestone>,
+}
+
+impl Default for GanttChart {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GanttChart {
@@ -333,8 +339,8 @@ impl GanttChart {
                     
                     // Draw task bars
                     for task_id in task_ids {
-                        if let Some(task) = tasks.get(&task_id) {
-                            if let Some(task_schedule) = schedule.task_schedules.get(&task_id) {
+                        if let Some(task) = tasks.get(&task_id)
+                            && let Some(task_schedule) = schedule.task_schedules.get(&task_id) {
                                 let bar = self.calculate_bar_position(
                                     task_schedule.start_date,
                                     task_schedule.end_date,
@@ -377,7 +383,6 @@ impl GanttChart {
                                 
                                 y_position += 35.0;
                             }
-                        }
                     }
                     
                     y_position += 20.0; // Space between resource groups

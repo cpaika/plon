@@ -13,9 +13,7 @@ CREATE TABLE IF NOT EXISTS task_configurations (
 CREATE INDEX IF NOT EXISTS idx_task_configurations_name 
 ON task_configurations(name);
 
--- Add configuration_id to tasks table to link tasks to their configuration
-ALTER TABLE tasks ADD COLUMN configuration_id TEXT REFERENCES task_configurations(id);
-
+-- configuration_id already exists in tasks table from initial schema
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_tasks_configuration_id 
 ON tasks(configuration_id);

@@ -1,4 +1,4 @@
-use crate::domain::task_config::{TaskConfiguration, StateMachine, MetadataSchema};
+use crate::domain::task_config::TaskConfiguration;
 use anyhow::Result;
 use sqlx::{SqlitePool, Row};
 use std::sync::Arc;

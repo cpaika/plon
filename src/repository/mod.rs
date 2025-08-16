@@ -36,4 +36,14 @@ impl Repository {
             pool,
         }
     }
+    
+    pub fn new_memory() -> Self {
+        // Create an in-memory SQLite database for testing
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let pool = runtime.block_on(async {
+            SqlitePool::connect(":memory:").await.unwrap()
+        });
+        
+        Self::new(pool)
+    }
 }

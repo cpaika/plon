@@ -106,8 +106,8 @@ impl RecurringService {
     }
 
     pub async fn generate_tasks_for_template(&self, template_id: Uuid) -> Result<Option<Task>> {
-        if let Some(mut template) = self.repository.recurring.get(template_id).await? {
-            if let Some(task) = template.generate_task() {
+        if let Some(mut template) = self.repository.recurring.get(template_id).await?
+            && let Some(task) = template.generate_task() {
                 // Save the generated task to the database
                 self.repository.tasks.create(&task).await?;
                 
@@ -116,7 +116,6 @@ impl RecurringService {
                 
                 return Ok(Some(task));
             }
-        }
         Ok(None)
     }
 

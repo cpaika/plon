@@ -1,8 +1,8 @@
 use crate::domain::{task::Task, goal::Goal, resource::Resource, dependency::{Dependency, DependencyGraph, DependencyType}};
-use crate::services::timeline_scheduler::{TimelineScheduler, TimelineSchedule};
+use crate::services::timeline_scheduler::{TimelineScheduler, TimelineSchedule, TaskSchedule};
 use crate::ui::widgets::gantt_chart::GanttChart;
 use eframe::egui::{self, Ui, ScrollArea, Rect, Sense, Vec2, Pos2, Color32, Stroke};
-use chrono::{Utc, Duration, NaiveDate, Local, Datelike};
+use chrono::{Utc, Duration, NaiveDate, Local};
 use std::collections::HashMap;
 use uuid::Uuid;
 

@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     parent_task_id TEXT,
     position_x REAL NOT NULL,
     position_y REAL NOT NULL,
+    is_archived INTEGER NOT NULL DEFAULT 0,
+    assignee TEXT,
+    configuration_id TEXT,
     FOREIGN KEY (assigned_resource_id) REFERENCES resources(id),
     FOREIGN KEY (goal_id) REFERENCES goals(id),
     FOREIGN KEY (parent_task_id) REFERENCES tasks(id)
@@ -56,6 +59,7 @@ CREATE TABLE IF NOT EXISTS goals (
     completed_at TEXT,
     parent_goal_id TEXT,
     estimated_hours REAL,
+    progress REAL NOT NULL DEFAULT 0.0,
     position_x REAL NOT NULL,
     position_y REAL NOT NULL,
     position_width REAL NOT NULL,

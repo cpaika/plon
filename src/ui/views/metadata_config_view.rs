@@ -1,10 +1,9 @@
 use crate::domain::task_config::{
     TaskConfiguration, MetadataFieldConfig, FieldType, FieldOption, 
-    StateDefinition, StateTransition, ValidationRule, TransitionCondition, 
-    TransitionEffect, AutoAction
+    StateDefinition
 };
 use crate::services::TaskConfigService;
-use eframe::egui::{self, Ui, Context, Vec2, Color32, RichText};
+use eframe::egui::{self, Ui, Context, Color32, RichText};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -52,6 +51,12 @@ enum ConfigTab {
     MetadataFields,
     StateMachine,
     Presets,
+}
+
+impl Default for MetadataConfigView {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MetadataConfigView {
@@ -713,14 +718,11 @@ impl MetadataConfigView {
 }
 
 fn parse_color(hex: &str) -> Color32 {
-    if hex.len() == 7 && hex.starts_with('#') {
-        if let Ok(r) = u8::from_str_radix(&hex[1..3], 16) {
-            if let Ok(g) = u8::from_str_radix(&hex[3..5], 16) {
-                if let Ok(b) = u8::from_str_radix(&hex[5..7], 16) {
+    if hex.len() == 7 && hex.starts_with('#')
+        && let Ok(r) = u8::from_str_radix(&hex[1..3], 16)
+            && let Ok(g) = u8::from_str_radix(&hex[3..5], 16)
+                && let Ok(b) = u8::from_str_radix(&hex[5..7], 16) {
                     return Color32::from_rgb(r, g, b);
                 }
-            }
-        }
-    }
     Color32::GRAY
 }

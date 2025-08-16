@@ -13,6 +13,4 @@ pub use goal_service::GoalService;
 pub use resource_service::ResourceService;
 pub use recurring_service::RecurringService;
 pub use dependency_service::DependencyService;
-pub use scheduler::RecurringTaskScheduler;
 pub use task_config_service::TaskConfigService;
-pub use timeline_scheduler::{TimelineScheduler, TimelineSchedule, TaskSchedule};

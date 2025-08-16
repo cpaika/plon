@@ -1,0 +1,17 @@
+[package]
+name = "plon-scripts"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "generate_test_data"
+path = "generate_test_data.rs"
+
+[dependencies]
+plon = { path = ".." }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+chrono = "0.4"
+uuid = { version = "1", features = ["v4"] }
+sqlx = { version = "0.7", features = ["sqlite", "runtime-tokio-native-tls"] }
+rand = "0.8"

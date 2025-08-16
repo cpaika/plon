@@ -1,6 +1,6 @@
 use crate::domain::{task::Task, comment::{Comment, EntityType}, resource::Resource};
 use crate::repository::comment_repository::CommentRepository;
-use eframe::egui::{self, Ui, Window, ScrollArea, Vec2, Color32, Rounding};
+use eframe::egui::{self, Ui, Window, ScrollArea, Vec2, Color32};
 use uuid::Uuid;
 use chrono::Utc;
 use std::sync::Arc;
@@ -14,6 +14,12 @@ pub struct TaskDetailModal {
     pub edit_comment_text: String,
     pub comment_repository: Option<Arc<CommentRepository>>,
     pub show_edit_mode: bool,
+}
+
+impl Default for TaskDetailModal {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TaskDetailModal {

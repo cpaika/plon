@@ -2,7 +2,7 @@ use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, Utc, Weekday};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
-use crate::domain::task::{Task, Priority, TaskStatus};
+use crate::domain::task::{Task, Priority};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RecurringTaskTemplate {
@@ -86,19 +86,17 @@ impl RecurringTaskTemplate {
             return None;
         }
 
-        if let Some(max) = self.recurrence_rule.max_occurrences {
-            if self.recurrence_rule.occurrences_count >= max {
+        if let Some(max) = self.recurrence_rule.max_occurrences
+            && self.recurrence_rule.occurrences_count >= max {
                 self.active = false;
                 return None;
             }
-        }
 
-        if let Some(end_date) = self.recurrence_rule.end_date {
-            if Utc::now().date_naive() > end_date {
+        if let Some(end_date) = self.recurrence_rule.end_date
+            && Utc::now().date_naive() > end_date {
                 self.active = false;
                 return None;
             }
-        }
 
         let mut task = Task::new(
             self.title.clone(),
@@ -136,7 +134,7 @@ impl RecurringTaskTemplate {
                 // Find next matching day of week
                 if !self.recurrence_rule.days_of_week.is_empty() {
                     while !self.recurrence_rule.days_of_week.contains(&next.weekday()) {
-                        next = next + Duration::days(1);
+                        next += Duration::days(1);
                     }
                 }
                 next
