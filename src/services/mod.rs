@@ -5,6 +5,7 @@ mod recurring_service;
 mod dependency_service;
 mod scheduler;
 pub mod summarization;
+pub mod timeline_scheduler;
 
 pub use task_service::TaskService;
 pub use goal_service::GoalService;
@@ -12,3 +13,4 @@ pub use resource_service::ResourceService;
 pub use recurring_service::RecurringService;
 pub use dependency_service::DependencyService;
 pub use scheduler::RecurringTaskScheduler;
+pub use timeline_scheduler::{TimelineScheduler, TimelineSchedule, TaskSchedule};
