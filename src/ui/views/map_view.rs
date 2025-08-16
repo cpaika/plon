@@ -1,6 +1,8 @@
-use crate::domain::{task::Task, goal::Goal, dependency::{Dependency, DependencyType, DependencyGraph}};
+use crate::domain::{task::Task, goal::Goal, dependency::{Dependency, DependencyType, DependencyGraph}, comment::Comment};
 use crate::services::summarization::{SummarizationService, SummaryCache};
 use crate::services::DependencyService;
+use crate::ui::widgets::task_detail_modal::{TaskDetailModal, TaskAction};
+use crate::repository::comment_repository::CommentRepository;
 pub use crate::services::summarization::SummarizationLevel;
 use eframe::egui::{self, Color32, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 use std::collections::HashMap;
@@ -41,6 +43,10 @@ pub struct MapView {
     // Dependencies
     dependency_graph: DependencyGraph,
     dependency_service: Option<Arc<DependencyService>>,
+    
+    // Task detail modal
+    task_detail_modal: TaskDetailModal,
+    comment_repository: Option<Arc<CommentRepository>>,
 }
 
 #[derive(Clone)]
@@ -106,6 +112,8 @@ impl MapView {
             dependency_preview_end: None,
             dependency_graph: DependencyGraph::new(),
             dependency_service: None,
+            task_detail_modal: TaskDetailModal::new(),
+            comment_repository: None,
         }
     }
 
@@ -307,6 +315,55 @@ impl MapView {
                 egui::FontId::proportional(12.0),
                 Color32::from_rgba_unmultiplied(100, 100, 100, 180),
             );
+        }
+        
+        // Show task detail modal
+        let resources = Vec::new(); // TODO: Get from context
+        if let Some(action) = self.task_detail_modal.show(ui.ctx(), &resources) {
+            match action {
+                TaskAction::Update(updated_task) => {
+                    // Update the task in the list
+                    if let Some(task) = tasks.iter_mut().find(|t| t.id == updated_task.id) {
+                        *task = updated_task;
+                    }
+                }
+                TaskAction::AddComment(comment) => {
+                    // Save comment to database
+                    if let Some(repo) = &self.comment_repository {
+                        let repo_clone = repo.clone();
+                        let runtime_clone = self.runtime.clone();
+                        runtime_clone.spawn(async move {
+                            if let Err(e) = repo_clone.create(&comment).await {
+                                eprintln!("Failed to save comment: {}", e);
+                            }
+                        });
+                    }
+                }
+                TaskAction::UpdateComment(comment) => {
+                    // Update comment in database
+                    if let Some(repo) = &self.comment_repository {
+                        let repo_clone = repo.clone();
+                        let runtime_clone = self.runtime.clone();
+                        runtime_clone.spawn(async move {
+                            if let Err(e) = repo_clone.update(&comment).await {
+                                eprintln!("Failed to update comment: {}", e);
+                            }
+                        });
+                    }
+                }
+                TaskAction::DeleteComment(id) => {
+                    // Delete comment from database
+                    if let Some(repo) = &self.comment_repository {
+                        let repo_clone = repo.clone();
+                        let runtime_clone = self.runtime.clone();
+                        runtime_clone.spawn(async move {
+                            if let Err(e) = repo_clone.delete(id).await {
+                                eprintln!("Failed to delete comment: {}", e);
+                            }
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -545,6 +602,21 @@ impl MapView {
         if task_response.clicked() && !self.creating_dependency {
             self.selected_task_id = Some(task.id);
             self.selected_goal_id = None;
+            
+            // Open task detail modal
+            let comments = if let Some(repo) = &self.comment_repository {
+                // Load comments for this task
+                let repo_clone = repo.clone();
+                let task_id = task.id;
+                let runtime_clone = self.runtime.clone();
+                runtime_clone.block_on(async move {
+                    repo_clone.list_for_entity(task_id).await.unwrap_or_default()
+                })
+            } else {
+                Vec::new()
+            };
+            
+            self.task_detail_modal.open(task.clone(), comments);
         }
         
         // Handle task dragging (only if not dragging from dots)
