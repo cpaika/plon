@@ -1,7 +1,7 @@
 use crate::domain::{task::Task, goal::Goal, resource::Resource, dependency::{Dependency, DependencyGraph, DependencyType}};
 use crate::services::timeline_scheduler::{TimelineScheduler, TimelineSchedule};
 use crate::ui::widgets::gantt_chart::GanttChart;
-use eframe::egui::{self, Ui, ScrollArea, Rect, Sense, Vec2, Pos2, Color32, Stroke};
+use eframe::egui::{self, Ui, Rect, Sense, Vec2, Pos2, Color32, Stroke};
 use chrono::{Utc, Duration, NaiveDate, Local, Datelike};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -289,27 +289,42 @@ impl TimelineView {
         
         ui.separator();
         
-        // Main content area with preserved scroll position
-        // Use a stable ID for the ScrollArea to maintain state across frames
-        ScrollArea::both()
-            .id_source("timeline_view_scroll")
-            .auto_shrink([true, true])  // Allow shrinking to prevent infinite scroll
+        // CRITICAL FIX: Use ScrollArea to properly handle content that may be larger than viewport
+        // This prevents the feedback loop where content size changes trigger re-layouts
+        // which cause available space to change, which causes infinite scrolling
+        egui::ScrollArea::both()
+            .id_source("timeline_scroll_area")  // Stable ID for state persistence
+            .auto_shrink([false, false])  // Don't shrink - maintain stable size
+            .max_height(f32::INFINITY)  // No max height constraint
+            .max_width(f32::INFINITY)   // No max width constraint
+            .drag_to_scroll(false)  // DISABLE drag scrolling - only scroll with wheel/scrollbars
             .show(ui, |ui| {
-                match self.selected_view {
-                    TimelineViewMode::Gantt => {
-                        self.show_gantt_view(ui, tasks, goals);
+                
+                // Use fixed content size inside the scroll area
+                // This ensures content doesn't change based on available space
+                let content_size = Vec2::new(1200.0, 600.0);
+                
+                ui.allocate_ui_with_layout(
+                    content_size,
+                    egui::Layout::top_down(egui::Align::LEFT),
+                    |ui| {
+                        match self.selected_view {
+                            TimelineViewMode::Gantt => {
+                                self.show_gantt_view(ui, tasks, goals);
+                            }
+                            TimelineViewMode::List => {
+                                self.show_list_view(ui, tasks);
+                            }
+                            TimelineViewMode::Calendar => {
+                                self.show_calendar_view(ui, tasks);
+                            }
+                        }
                     }
-                    TimelineViewMode::List => {
-                        self.show_list_view(ui, tasks);
-                    }
-                    TimelineViewMode::Calendar => {
-                        self.show_calendar_view(ui, tasks);
-                    }
-                }
+                );
             });
     }
     
-    fn show_gantt_view(&mut self, ui: &mut Ui, tasks: &[Task], goals: &[Goal]) {
+    fn show_gantt_view(&mut self, ui: &mut Ui, tasks: &[Task], _goals: &[Goal]) {
         // Convert to HashMaps for processing
         let task_map: HashMap<Uuid, Task> = tasks.iter()
             .map(|t| (t.id, t.clone()))
@@ -322,18 +337,21 @@ impl TimelineView {
             return;
         }
         
-        // Simple Gantt visualization
+        // Simple rendering without nested allocations
         let row_height = 30.0;
         let day_width = 25.0 * self.zoom_level;
         let label_width = 200.0;
         
-        // Limit chart dimensions to reasonable values
-        let chart_width = (label_width + (self.days_to_show as f32 * day_width)).min(5000.0);
-        let chart_height = (filtered_tasks.len() as f32 * row_height + 50.0).min(3000.0);
+        // FIX: Use fixed dimensions to prevent feedback loop with scroll area
+        // Do NOT use ui.available_width() or ui.available_height() as they change
+        // when scroll bars appear/disappear, causing infinite scrolling
+        let chart_width = 1000.0;  // Fixed width
+        let chart_height = 400.0;   // Fixed height
         
+        // Allocate painter with bounded dimensions
         let (response, painter) = ui.allocate_painter(
             Vec2::new(chart_width, chart_height),
-            Sense::click_and_drag(),
+            Sense::hover()
         );
         
         let rect = response.rect;

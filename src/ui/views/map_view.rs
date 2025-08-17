@@ -232,13 +232,18 @@ impl MapView {
             ui.ctx().request_repaint();
         }
         
-        // Handle panning with improved support
+        // Handle panning - support multiple input methods
+        let mut did_pan = false;
+        
+        // Method 1: Middle mouse button drag (traditional)
+        // Method 2: Shift + Primary button drag (keyboard modifier)
         if response.dragged_by(egui::PointerButton::Middle) {
             if let Some(pointer_pos) = response.interact_pointer_pos() {
                 if !self.is_panning {
                     self.start_pan(pointer_pos, egui::PointerButton::Middle);
                 } else {
                     self.update_pan(pointer_pos);
+                    did_pan = true;
                 }
             }
         } else if response.dragged_by(egui::PointerButton::Primary) && ui.input(|i| i.modifiers.shift) {
@@ -247,6 +252,7 @@ impl MapView {
                     self.start_pan_with_modifiers(pointer_pos, egui::PointerButton::Primary, true, false);
                 } else {
                     self.update_pan(pointer_pos);
+                    did_pan = true;
                 }
             }
         } else if self.is_panning && !response.dragged() {
@@ -259,14 +265,58 @@ impl MapView {
         }
 
         // Handle zoom with scroll and trackpad gestures
-        if response.hovered() {
-            // Standard scroll wheel zoom
-            let scroll_delta = ui.input(|i| i.scroll_delta.y);
-            if scroll_delta != 0.0 {
-                if let Some(hover_pos) = response.hover_pos() {
-                    self.handle_scroll(scroll_delta, hover_pos);
+        if response.hovered() || !did_pan {
+            ui.input(|i| {
+                let scroll_delta = i.scroll_delta;
+                
+                // Check for zoom gesture (pinch) vs pan gesture
+                // Pinch zoom uses zoom_delta, pan uses scroll_delta
+                let zoom_delta = i.zoom_delta();
+                if zoom_delta != 1.0 {
+                    // Handle pinch zoom
+                    self.zoom_level = (self.zoom_level * zoom_delta).clamp(0.1, 5.0);
+                } else if scroll_delta.length() > 0.0 {
+                    // Handle trackpad pan (two-finger drag)
+                    // On Mac, this is the primary way to pan with a trackpad
+                    
+                    // Check if this is likely a pan gesture (both x and y components)
+                    // or a traditional scroll wheel (mostly just y)
+                    let is_trackpad_pan = scroll_delta.x.abs() > 0.1 || 
+                                          (scroll_delta.y.abs() > 0.0 && i.modifiers.shift);
+                    
+                    if is_trackpad_pan {
+                        // Pan the view
+                        self.camera_pos += scroll_delta / self.zoom_level;
+                        self.is_panning = true;  // Set panning flag for trackpad pan!
+                    } else if i.modifiers.ctrl || i.modifiers.command {
+                        // Ctrl/Cmd + scroll for zoom (common pattern)
+                        let zoom_factor = 1.0 + scroll_delta.y * 0.001;
+                        self.zoom_level = (self.zoom_level * zoom_factor).clamp(0.1, 5.0);
+                    } else if response.hovered() {
+                        // Standard scroll wheel zoom when hovering
+                        if let Some(hover_pos) = response.hover_pos() {
+                            self.handle_scroll(scroll_delta.y, hover_pos);
+                        }
+                    } else {
+                        // Default: treat vertical scroll as pan (better for trackpad UX)
+                        // This makes the map feel more natural on Mac
+                        self.camera_pos.y += scroll_delta.y / self.zoom_level;
+                        self.camera_pos.x += scroll_delta.x / self.zoom_level;
+                        self.is_panning = true;  // Set panning flag here too!
+                    }
+                } else {
+                    // No scroll/zoom happening
+                    // Only clear panning flag if we're also not dragging with mouse
+                    // This prevents the flag from being cleared while actively scrolling
+                    if !response.dragged_by(egui::PointerButton::Middle) && 
+                       !(response.dragged_by(egui::PointerButton::Primary) && i.modifiers.shift) {
+                        // For trackpad panning, we'll clear the flag only when no input is happening
+                        // This is a bit tricky because trackpad doesn't have a "release" event
+                        // We rely on scroll_delta being zero when not scrolling
+                        self.is_panning = false;
+                    }
                 }
-            }
+            });
             
             // Handle trackpad pinch gestures (if available)
             ui.input(|i| {
@@ -596,14 +646,26 @@ impl MapView {
         painter.circle_filled(right_dot_pos, dot_radius, dot_color);
         
         // Handle interaction with the task body
-        let task_response = ui.allocate_rect(rect, Sense::click_and_drag());
+        // Only make interactive when NOT panning to avoid interference
+        let sense = if self.is_panning {
+            Sense::hover()  // Only detect hover, don't consume drag events
+        } else {
+            Sense::click_and_drag()
+        };
+        let task_response = ui.allocate_rect(rect, sense);
         
         // Handle interaction with connection dots
         let left_dot_rect = Rect::from_center_size(left_dot_pos, Vec2::splat(dot_radius * 3.0));
         let right_dot_rect = Rect::from_center_size(right_dot_pos, Vec2::splat(dot_radius * 3.0));
         
-        let left_dot_response = ui.allocate_rect(left_dot_rect, Sense::drag());
-        let right_dot_response = ui.allocate_rect(right_dot_rect, Sense::drag());
+        // Only make dots draggable when not panning
+        let dot_sense = if self.is_panning {
+            Sense::hover()
+        } else {
+            Sense::drag()
+        };
+        let left_dot_response = ui.allocate_rect(left_dot_rect, dot_sense);
+        let right_dot_response = ui.allocate_rect(right_dot_rect, dot_sense);
         
         // Hover effects for dots
         if left_dot_response.hovered() || right_dot_response.hovered() {
@@ -766,9 +828,15 @@ impl MapView {
         );
         
         // Handle interaction
-        let response = ui.allocate_rect(rect, Sense::click_and_drag());
+        // Only make interactive when NOT panning to avoid interference
+        let sense = if self.is_panning {
+            Sense::hover()  // Only detect hover, don't consume drag events
+        } else {
+            Sense::click_and_drag()
+        };
+        let response = ui.allocate_rect(rect, sense);
         
-        if response.clicked() {
+        if response.clicked() && !self.is_panning {
             // Selected goal (would need mutable self to update)
             // self.selected_goal_id = Some(goal.id);
             // self.selected_task_id = None;

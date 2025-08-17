@@ -341,8 +341,9 @@ impl eframe::App for PlonApp {
         self.show_main_content(ctx);
         self.show_modals(ctx);
         
-        // Request repaint for animations
-        ctx.request_repaint();
+        // FIXED: Don't request repaint unconditionally - this was causing auto-scrolling!
+        // Only request repaint when there are actual animations or updates needed
+        // ctx.request_repaint();
     }
 }
 
