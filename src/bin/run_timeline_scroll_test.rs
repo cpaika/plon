@@ -8,7 +8,7 @@ use std::thread;
 
 fn main() {
     println!("🧪 Timeline Scroll Detection Test");
-    println!("{'='*50}");
+    println!("{}", "=".repeat(50));
     println!();
     println!("This test will:");
     println!("1. Launch the PlonApp");
@@ -33,13 +33,13 @@ fn main() {
         .expect("Failed to launch app");
     
     println!();
-    println!("{'='*50}");
+    println!("{}", "=".repeat(50));
     println!("TEST INSTRUCTIONS:");
     println!("1. Click on '📅 Timeline' in the top bar");
     println!("2. Once in Timeline view, ONLY move your mouse");
     println!("3. Watch if the view scrolls without any clicks/wheel");
     println!("4. Close the app when done testing");
-    println!("{'='*50}");
+    println!("{}", "=".repeat(50));
     println!();
     println!("Waiting for app to close...");
     

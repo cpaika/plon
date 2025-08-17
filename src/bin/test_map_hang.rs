@@ -1,4 +1,4 @@
-use plon::ui::app::PlonApp;
+use plon::ui::PlonApp;
 use std::time::{Duration, Instant};
 use std::thread;
 use std::sync::Arc;
@@ -32,8 +32,24 @@ fn main() {
         "Plon Hang Test",
         native_options,
         Box::new(|cc| {
+            // Create a test repository
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            let repository = runtime.block_on(async {
+                let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                    .connect("sqlite::memory:")
+                    .await
+                    .unwrap();
+                
+                sqlx::migrate!("./migrations")
+                    .run(&pool)
+                    .await
+                    .unwrap();
+                
+                plon::repository::Repository::new(pool)
+            });
+            
             // Create the app
-            let app = PlonApp::new(cc);
+            let app = PlonApp::new(cc, repository);
             
             // Schedule app to close after 5 seconds
             let ctx = cc.egui_ctx.clone();
