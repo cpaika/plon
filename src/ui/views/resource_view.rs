@@ -273,7 +273,7 @@ impl ResourceView {
                             ui.horizontal_wrapped(|ui| {
                                 ui.label("🔧 Skills:");
                                 for skill in &resource.skills {
-                                    ui.small_button(skill);
+                                    let _ = ui.small_button(skill);
                                 }
                             });
                         }

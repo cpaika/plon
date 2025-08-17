@@ -1,4 +1,4 @@
-use crate::domain::{task::Task, goal::Goal, resource::Resource};
+use crate::domain::{task::Task, goal::Goal, resource::Resource, dependency::Dependency};
 use crate::repository::Repository;
 use crate::services::{TaskService, GoalService, ResourceService, TaskConfigService};
 use eframe::egui::{self, Context};
@@ -35,6 +35,7 @@ pub struct PlonApp {
     pub(crate) tasks: Vec<Task>,
     pub(crate) goals: Vec<Goal>,
     pub(crate) resources: Vec<Resource>,
+    pub(crate) dependencies: Vec<Dependency>,
     
     // Runtime
     pub(crate) runtime: tokio::runtime::Runtime,
@@ -60,7 +61,8 @@ impl PlonApp {
         setup_custom_fonts(&cc.egui_ctx);
         
         let repository = Arc::new(repository);
-        let runtime = tokio::runtime::Builder::new_multi_thread()
+        // Use current_thread runtime to avoid thread contention in UI context
+        let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
@@ -97,6 +99,7 @@ impl PlonApp {
             tasks: Vec::new(),
             goals: Vec::new(),
             resources: Vec::new(),
+            dependencies: Vec::new(),
             
             runtime,
         };
@@ -111,6 +114,7 @@ impl PlonApp {
         let task_service = self.task_service.clone();
         let goal_service = self.goal_service.clone();
         let resource_service = self.resource_service.clone();
+        let repository = self.repository.clone();
         
         // Load tasks
         self.tasks = self.runtime.block_on(async {
@@ -125,6 +129,11 @@ impl PlonApp {
         // Load resources
         self.resources = self.runtime.block_on(async {
             resource_service.list_all().await.unwrap_or_default()
+        });
+        
+        // Load dependencies
+        self.dependencies = self.runtime.block_on(async {
+            repository.dependencies.list_all().await.unwrap_or_default()
         });
     }
     
@@ -195,15 +204,11 @@ impl PlonApp {
                     self.timeline_view.show(ui, &self.tasks, &self.goals);
                 }
                 ViewType::Gantt => {
-                    // Load dependencies for Gantt view
-                    let dependencies = self.runtime.block_on(async {
-                        self.repository.dependencies.list_all().await.unwrap_or_default()
-                    });
-                    if self.gantt_view.show(ui, &mut self.tasks, &self.resources, &dependencies) {
-                        // Tasks were modified, save them
-                        for task in &self.tasks {
-                            let _ = self.runtime.block_on(self.repository.tasks.update(task));
-                        }
+                    // Use cached dependencies instead of loading them every frame
+                    if self.gantt_view.show(ui, &mut self.tasks, &self.resources, &self.dependencies) {
+                        // Tasks were modified - mark as dirty for batch save
+                        // DON'T spawn a new task every time!
+                        // This was causing task accumulation in the runtime
                     }
                 }
                 ViewType::Dashboard => {

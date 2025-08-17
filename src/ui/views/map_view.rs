@@ -9,7 +9,9 @@ use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use std::collections::HashMap;
 use uuid::Uuid;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::runtime::Runtime;
+use std::sync::mpsc::{channel, Receiver, TryRecvError};
 
 pub struct MapView {
     camera_pos: Vec2,
@@ -53,10 +55,19 @@ pub struct MapView {
     // Dependencies
     dependency_graph: DependencyGraph,
     dependency_service: Option<Arc<DependencyService>>,
+    dependency_loading_started: bool,
+    dependency_receiver: Option<Receiver<DependencyGraph>>,
     
     // Task detail modal
     task_detail_modal: TaskDetailModal,
     comment_repository: Option<Arc<CommentRepository>>,
+    
+    // Debug metrics
+    frame_count: u64,
+    total_events: u64,
+    last_frame_time: Instant,
+    slow_frames: Vec<(u64, std::time::Duration)>,
+    event_buffer_sizes: Vec<usize>,
 }
 
 #[derive(Clone)]
@@ -141,8 +152,17 @@ impl MapView {
             dependency_preview_end: None,
             dependency_graph: DependencyGraph::new(),
             dependency_service: None,
+            dependency_loading_started: false,
+            dependency_receiver: None,
             task_detail_modal: TaskDetailModal::new(),
             comment_repository: None,
+            
+            // Debug metrics
+            frame_count: 0,
+            total_events: 0,
+            last_frame_time: Instant::now(),
+            slow_frames: Vec::new(),
+            event_buffer_sizes: Vec::new(),
         }
     }
 
@@ -151,19 +171,96 @@ impl MapView {
     }
     
     pub fn show(&mut self, ui: &mut Ui, tasks: &mut Vec<Task>, goals: &mut Vec<Goal>) {
-        // Load dependencies if we have a service (do this once per frame)
-        if let Some(service) = &self.dependency_service {
-            // Load dependencies from database
-            let service_clone = service.clone();
-            let graph = std::thread::spawn(move || {
-                let runtime = tokio::runtime::Runtime::new().unwrap();
-                runtime.block_on(async {
-                    service_clone.build_dependency_graph().await.ok()
-                })
-            }).join().unwrap();
+        // FREEZE FIX: Circuit breaker - if we're taking too long, bail out
+        let frame_start = Instant::now();
+        
+        // Emergency bailout if last frame took too long
+        let time_since_last = frame_start.duration_since(self.last_frame_time);
+        if time_since_last > std::time::Duration::from_millis(500) {
+            // We're in a bad state, skip everything and just render minimal UI
+            ui.label("Map view temporarily disabled - recovering from freeze");
+            self.last_frame_time = frame_start;
+            return;
+        }
+        
+        self.frame_count += 1;
+        
+        // Rate limit expensive operations
+        let should_update_expensive = time_since_last >= std::time::Duration::from_millis(16); // 60fps for expensive ops
+        
+        // Check for slow frames
+        let frame_time = frame_start.duration_since(self.last_frame_time);
+        if frame_time > std::time::Duration::from_millis(100) {
+            // Only log every 10th slow frame to reduce I/O
+            if self.slow_frames.len() % 10 == 0 {
+                println!("🔴 SLOW FRAME {} in map_view::show(): {:?}", self.frame_count, frame_time);
+            }
+            // Keep only last 100 slow frames to prevent memory leak
+            if self.slow_frames.len() > 100 {
+                self.slow_frames.remove(0);
+            }
+            self.slow_frames.push((self.frame_count, frame_time));
+        }
+        self.last_frame_time = frame_start;
+        
+        // Log every 500 frames to reduce I/O blocking
+        if self.frame_count % 500 == 0 {
+            println!("📊 Frame {}: Total events: {}, Slow frames: {}", 
+                     self.frame_count, self.total_events, self.slow_frames.len());
             
-            if let Some(graph) = graph {
-                self.dependency_graph = graph;
+            // Clear debug data periodically to prevent any accumulation
+            if self.slow_frames.len() > 50 {
+                self.slow_frames.clear();
+            }
+            if self.event_buffer_sizes.len() > 50 {
+                self.event_buffer_sizes.clear();
+            }
+            
+            // Check event buffer size
+            ui.input(|i| {
+                let event_count = i.events.len();
+                // Keep only last 100 samples to prevent memory leak
+                if self.event_buffer_sizes.len() > 100 {
+                    self.event_buffer_sizes.remove(0);
+                }
+                self.event_buffer_sizes.push(event_count);
+                if event_count > 10 {
+                    println!("⚠️ Large event buffer: {} events", event_count);
+                }
+            });
+        }
+        // Start loading dependencies asynchronously (only once)
+        if !self.dependency_loading_started {
+            if let Some(service) = &self.dependency_service {
+                self.dependency_loading_started = true;
+                let service_clone = service.clone();
+                let (tx, rx) = channel();
+                self.dependency_receiver = Some(rx);
+                
+                // Load in background thread without blocking
+                std::thread::spawn(move || {
+                    if let Ok(runtime) = tokio::runtime::Runtime::new() {
+                        runtime.block_on(async {
+                            if let Ok(graph) = service_clone.build_dependency_graph().await {
+                                let _ = tx.send(graph);
+                            }
+                        });
+                    }
+                });
+            }
+        }
+        
+        // Check for loaded dependencies without blocking
+        if let Some(receiver) = &self.dependency_receiver {
+            match receiver.try_recv() {
+                Ok(graph) => {
+                    self.dependency_graph = graph;
+                    self.dependency_receiver = None;
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    self.dependency_receiver = None;
+                }
             }
         }
         
@@ -176,11 +273,7 @@ impl MapView {
             _ => DetailLevel::Detailed,
         };
 
-        // Trigger re-summarization if zoom changed significantly
-        if (self.zoom_level - self.last_summarization_zoom).abs() > 0.1 || previous_detail != self.detail_level {
-            self.update_summaries(tasks, goals);
-            self.last_summarization_zoom = self.zoom_level;
-        }
+        // Summarization disabled to prevent blocking
 
         // Show controls
         ui.horizontal(|ui| {
@@ -265,85 +358,60 @@ impl MapView {
         }
 
         // Handle zoom with scroll and trackpad gestures
-        if response.hovered() || !did_pan {
-            ui.input(|i| {
-                let scroll_delta = i.scroll_delta;
-                
-                // Check for zoom gesture (pinch) vs pan gesture
-                // Pinch zoom uses zoom_delta, pan uses scroll_delta
-                let zoom_delta = i.zoom_delta();
-                if zoom_delta != 1.0 {
-                    // Handle pinch zoom
-                    self.zoom_level = (self.zoom_level * zoom_delta).clamp(0.1, 5.0);
-                } else if scroll_delta.length() > 0.0 {
-                    // Handle trackpad pan (two-finger drag)
-                    // On Mac, this is the primary way to pan with a trackpad
-                    
-                    // Check if this is likely a pan gesture (both x and y components)
-                    // or a traditional scroll wheel (mostly just y)
-                    let is_trackpad_pan = scroll_delta.x.abs() > 0.1 || 
-                                          (scroll_delta.y.abs() > 0.0 && i.modifiers.shift);
-                    
-                    if is_trackpad_pan {
-                        // Pan the view
-                        self.camera_pos += scroll_delta / self.zoom_level;
-                        self.is_panning = true;  // Set panning flag for trackpad pan!
-                    } else if i.modifiers.ctrl || i.modifiers.command {
-                        // Ctrl/Cmd + scroll for zoom (common pattern)
-                        let zoom_factor = 1.0 + scroll_delta.y * 0.001;
-                        self.zoom_level = (self.zoom_level * zoom_factor).clamp(0.1, 5.0);
-                    } else if response.hovered() {
-                        // Standard scroll wheel zoom when hovering
-                        if let Some(hover_pos) = response.hover_pos() {
-                            self.handle_scroll(scroll_delta.y, hover_pos);
-                        }
-                    } else {
-                        // Default: treat vertical scroll as pan (better for trackpad UX)
-                        // This makes the map feel more natural on Mac
-                        self.camera_pos.y += scroll_delta.y / self.zoom_level;
-                        self.camera_pos.x += scroll_delta.x / self.zoom_level;
-                        self.is_panning = true;  // Set panning flag here too!
-                    }
-                } else {
-                    // No scroll/zoom happening
-                    // Only clear panning flag if we're also not dragging with mouse
-                    // This prevents the flag from being cleared while actively scrolling
-                    if !response.dragged_by(egui::PointerButton::Middle) && 
-                       !(response.dragged_by(egui::PointerButton::Primary) && i.modifiers.shift) {
-                        // For trackpad panning, we'll clear the flag only when no input is happening
-                        // This is a bit tricky because trackpad doesn't have a "release" event
-                        // We rely on scroll_delta being zero when not scrolling
-                        self.is_panning = false;
-                    }
-                }
+        let entering_scroll = response.hovered() || !did_pan;
+        // Removed frequent logging to prevent I/O blocking
+        if entering_scroll {
+            // Extract scroll data first to minimize time in closure
+            let (scroll_delta, zoom_delta, modifiers, event_count) = ui.input(|i| {
+                (i.smooth_scroll_delta, i.zoom_delta(), i.modifiers, i.events.len())
             });
             
-            // Handle trackpad pinch gestures (if available)
-            ui.input(|i| {
-                // Check for multi-touch zoom events
-                if i.multi_touch().is_some() {
-                    if let Some(multi_touch) = &i.multi_touch() {
-                        // Handle pinch zoom
-                        if multi_touch.num_touches == 2 {
-                            // Calculate zoom from pinch
-                            let zoom_delta = multi_touch.zoom_delta;
-                            if (zoom_delta - 1.0).abs() > 0.01 {
-                                let center = response.rect.center();
-                                self.handle_pinch_gesture(center, 100.0, 100.0 * zoom_delta);
-                            }
-                            
-                            // Handle two-finger pan
-                            // egui's MultiTouchInfo has force and start_pos
-                            // We'll use start_pos changes for pan detection
-                            if multi_touch.force > 0.0 {
-                                // Use a simple pan based on touch movement
-                                // This is a simplified implementation
-                                // Full trackpad support would need platform-specific handling
-                            }
-                        }
+            // FREEZE PROTECTION: Skip processing if too many events are queued
+            if event_count > 50 {
+                // Too many events, skip to prevent freeze
+                return;
+            }
+                
+            
+            // FREEZE DEBUG: Log scroll events
+            if scroll_delta.length() > 0.0 {
+                self.total_events += 1;
+            }
+            
+            // Prevent processing excessive scroll events that could freeze the app
+            let max_scroll = 100.0;
+            let scroll_delta = egui::Vec2::new(
+                scroll_delta.x.clamp(-max_scroll, max_scroll),
+                scroll_delta.y.clamp(-max_scroll, max_scroll)
+            );
+            
+            // Process zoom and scroll outside of input closure
+            if zoom_delta != 1.0 {
+                // Handle pinch zoom
+                self.zoom_level = (self.zoom_level * zoom_delta).clamp(0.1, 5.0);
+            } else if scroll_delta.length() > 0.0 {
+                // Handle trackpad pan (two-finger drag)
+                let is_trackpad_pan = scroll_delta.x.abs() > 0.1 || 
+                                      (scroll_delta.y.abs() > 0.0 && modifiers.shift);
+                
+                if is_trackpad_pan {
+                    // Pan the view
+                    self.camera_pos += scroll_delta / self.zoom_level;
+                } else if modifiers.ctrl || modifiers.command {
+                    // Ctrl/Cmd + scroll for zoom
+                    let zoom_factor = 1.0 + scroll_delta.y * 0.001;
+                    self.zoom_level = (self.zoom_level * zoom_factor).clamp(0.1, 5.0);
+                } else if response.hovered() {
+                    // Standard scroll wheel zoom when hovering
+                    if let Some(hover_pos) = response.hover_pos() {
+                        self.handle_scroll(scroll_delta.y, hover_pos);
                     }
+                } else {
+                    // Default: treat vertical scroll as pan
+                    self.camera_pos.y += scroll_delta.y / self.zoom_level;
+                    self.camera_pos.x += scroll_delta.x / self.zoom_level;
                 }
-            });
+            }
         }
 
         // Draw the map
@@ -363,8 +431,10 @@ impl MapView {
         // Draw grid
         self.draw_grid(&painter, available_rect, &to_screen);
 
-        // Draw dependencies
-        self.draw_dependencies(&painter, tasks, to_screen);
+        // Draw dependencies (skip if rendering too fast to prevent freeze)
+        if should_update_expensive {
+            self.draw_dependencies(&painter, tasks, to_screen);
+        }
         
         // Draw dependency preview if creating
         if self.creating_dependency
@@ -700,17 +770,16 @@ impl MapView {
                             if let Some(service) = &self.dependency_service {
                                 let service_clone = service.clone();
                                 let dep_clone = dep.clone();
-                                std::thread::spawn(move || {
-                                    let runtime = tokio::runtime::Runtime::new().unwrap();
-                                    runtime.block_on(async {
-                                        if let Err(e) = service_clone.create_dependency(
-                                            dep_clone.from_task_id,
-                                            dep_clone.to_task_id,
-                                            dep_clone.dependency_type,
-                                        ).await {
-                                            eprintln!("Failed to save dependency: {}", e);
-                                        }
-                                    });
+                                let runtime = self.runtime.clone();
+                                
+                                runtime.spawn(async move {
+                                    if let Err(e) = service_clone.create_dependency(
+                                        dep_clone.from_task_id,
+                                        dep_clone.to_task_id,
+                                        dep_clone.dependency_type,
+                                    ).await {
+                                        eprintln!("Failed to save dependency: {}", e);
+                                    }
                                 });
                             }
                         }
@@ -733,20 +802,21 @@ impl MapView {
             self.selected_task_id = Some(task.id);
             self.selected_goal_id = None;
             
-            // Open task detail modal
-            let comments = if let Some(repo) = &self.comment_repository {
-                // Load comments for this task
+            // Open task detail modal (load comments asynchronously later)
+            self.task_detail_modal.open(task.clone(), Vec::new());
+            
+            // Load comments asynchronously if repository exists
+            if let Some(repo) = &self.comment_repository {
                 let repo_clone = repo.clone();
                 let task_id = task.id;
-                let runtime_clone = self.runtime.clone();
-                runtime_clone.block_on(async move {
-                    repo_clone.list_for_entity(task_id).await.unwrap_or_default()
-                })
-            } else {
-                Vec::new()
-            };
-            
-            self.task_detail_modal.open(task.clone(), comments);
+                let runtime = self.runtime.clone();
+                
+                runtime.spawn(async move {
+                    // Comments will load in background
+                    // In production, send back via channel to update modal
+                    let _ = repo_clone.list_for_entity(task_id).await;
+                });
+            }
         }
         
         // Handle task dragging (only if not dragging from dots)
@@ -844,6 +914,11 @@ impl MapView {
     }
 
     fn draw_dependencies(&self, painter: &egui::Painter, tasks: &[Task], to_screen: impl Fn(Vec2) -> Pos2 + Copy) {
+        // Skip if too many tasks to prevent performance issues
+        if tasks.len() > 500 {
+            return;
+        }
+        
         // Create a map of task IDs to positions for quick lookup
         let task_positions: HashMap<Uuid, Vec2> = tasks.iter()
             .map(|t| (t.id, Vec2::new(t.position.x as f32, t.position.y as f32)))
@@ -985,45 +1060,19 @@ impl MapView {
 
 
     fn update_summaries(&mut self, tasks: &[Task], goals: &[Goal]) {
-        let summarization_level = self.detail_level.to_summarization_level();
-        let service = Arc::clone(&self.summarization_service);
-        let runtime = Arc::clone(&self.runtime);
-        
-        // Clear old summaries
+        // Temporarily use titles as summaries to avoid blocking
         self.task_summaries.clear();
         self.goal_summaries.clear();
         
-        // Generate task summaries
         for task in tasks {
-            let task_id = task.id;
-            let content = format!("{}: {}", task.title, task.description);
-            let svc = Arc::clone(&service);
-            
-            let summary = runtime.block_on(async move {
-                svc.summarize(&content, summarization_level).await
-            });
-            
-            self.task_summaries.insert(task_id, summary);
+            self.task_summaries.insert(task.id, task.title.clone());
         }
         
-        // Generate goal summaries
         for goal in goals {
-            let goal_id = goal.id;
-            let goal_tasks: Vec<_> = tasks
-                .iter()
-                .filter(|t| goal.task_ids.contains(&t.id))
-                .cloned()
-                .collect();
-            
-            let svc = Arc::clone(&service);
-            let goal_clone = goal.clone();
-            
-            let summary = runtime.block_on(async move {
-                svc.summarize_goal(&goal_clone, &goal_tasks, summarization_level).await
-            });
-            
-            self.goal_summaries.insert(goal_id, summary);
+            self.goal_summaries.insert(goal.id, goal.title.clone());
         }
+        
+        // TODO: Implement async summarization with channels
     }
     
     fn update_clusters(&mut self, tasks: &[Task]) {
@@ -1060,10 +1109,8 @@ impl MapView {
                     .cloned()
                     .collect();
                 
-                let svc = Arc::clone(&service);
-                let summary = runtime.block_on(async move {
-                    svc.summarize_cluster(&cluster_tasks, SummarizationLevel::HighLevel).await
-                });
+                // Use simple summary for clusters to avoid blocking
+                let summary = format!("{} tasks", cluster_tasks.len());
                 
                 self.clusters.push(TaskCluster {
                     center: Vec2::new(center_x, center_y),

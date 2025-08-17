@@ -44,6 +44,7 @@ impl PlonApp {
             tasks: Vec::new(),
             goals: Vec::new(),
             resources: Vec::new(),
+            dependencies: Vec::new(),
             
             runtime,
         }
