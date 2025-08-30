@@ -1,19 +1,19 @@
+use crate::domain::goal::Goal;
+use crate::domain::task::Task;
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use serde::{Deserialize, Serialize};
-use anyhow::Result;
-use std::time::{Duration, Instant};
-use crate::domain::task::Task;
-use crate::domain::goal::Goal;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SummarizationLevel {
-    HighLevel,  // Very abstract, 1-2 sentences
-    MidLevel,   // Moderate detail, 3-4 sentences  
-    LowLevel,   // More detail, 5-6 sentences
-    Detailed,   // Full information
+    HighLevel, // Very abstract, 1-2 sentences
+    MidLevel,  // Moderate detail, 3-4 sentences
+    LowLevel,  // More detail, 5-6 sentences
+    Detailed,  // Full information
 }
 
 #[derive(Debug, Clone)]
@@ -46,7 +46,7 @@ pub struct SummaryCache {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-struct CacheKey {
+pub struct CacheKey {
     content_hash: u64,
     level: SummarizationLevel,
 }
@@ -76,7 +76,8 @@ impl SummarizationService {
     }
 
     fn get_model_endpoint() -> String {
-        std::env::var("LLM_ENDPOINT").unwrap_or_else(|_| "http://localhost:11434/api/generate".to_string())
+        std::env::var("LLM_ENDPOINT")
+            .unwrap_or_else(|_| "http://localhost:11434/api/generate".to_string())
     }
 
     fn get_api_key() -> Option<String> {
@@ -98,9 +99,10 @@ impl SummarizationService {
         }
 
         // Generate summary
-        let summary = self.generate_summary(content, level).await.unwrap_or_else(|_| {
-            self.fallback_summary(content, level)
-        });
+        let summary = self
+            .generate_summary(content, level)
+            .await
+            .unwrap_or_else(|_| self.fallback_summary(content, level));
 
         // Store in cache
         {
@@ -127,9 +129,10 @@ impl SummarizationService {
             return summary;
         }
 
-        let summary = self.generate_summary(content, level).await.unwrap_or_else(|_| {
-            self.fallback_summary(content, level)
-        });
+        let summary = self
+            .generate_summary(content, level)
+            .await
+            .unwrap_or_else(|_| self.fallback_summary(content, level));
 
         cache.insert(key, summary.clone());
         summary
@@ -149,12 +152,18 @@ impl SummarizationService {
 
         // Generate cluster summary with context
         let context = format!("This is a cluster of {} related tasks", tasks.len());
-        self.summarize_with_context(&combined_content, level, &context).await
+        self.summarize_with_context(&combined_content, level, &context)
+            .await
     }
 
-    pub async fn summarize_goal(&self, goal: &Goal, tasks: &[Task], level: SummarizationLevel) -> String {
+    pub async fn summarize_goal(
+        &self,
+        goal: &Goal,
+        tasks: &[Task],
+        level: SummarizationLevel,
+    ) -> String {
         let mut content = format!("Goal: {}\n{}", goal.title, goal.description);
-        
+
         if !tasks.is_empty() {
             content.push_str("\n\nAssociated tasks:\n");
             for task in tasks {
@@ -166,9 +175,14 @@ impl SummarizationService {
         self.summarize_with_context(&content, level, context).await
     }
 
-    async fn summarize_with_context(&self, content: &str, level: SummarizationLevel, context: &str) -> String {
+    async fn summarize_with_context(
+        &self,
+        content: &str,
+        level: SummarizationLevel,
+        context: &str,
+    ) -> String {
         let prompt = self.build_prompt(content, level, Some(context));
-        
+
         match self.call_llm(&prompt).await {
             Ok(response) => response,
             Err(_) => self.fallback_summary(content, level),
@@ -180,7 +194,12 @@ impl SummarizationService {
         self.call_llm(&prompt).await
     }
 
-    fn build_prompt(&self, content: &str, level: SummarizationLevel, context: Option<&str>) -> String {
+    fn build_prompt(
+        &self,
+        content: &str,
+        level: SummarizationLevel,
+        context: Option<&str>,
+    ) -> String {
         let level_instruction = match level {
             SummarizationLevel::HighLevel => {
                 "Provide an extremely concise 1-2 sentence summary capturing only the essential point."
@@ -200,9 +219,7 @@ impl SummarizationService {
 
         format!(
             "{}\n\n{}\n\nContent:\n{}\n\nSummary:",
-            context_str,
-            level_instruction,
-            content
+            context_str, level_instruction, content
         )
     }
 
@@ -359,7 +376,7 @@ impl SummarizationService {
     fn hash_content(content: &str) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
         content.hash(&mut hasher);
         hasher.finish()
@@ -432,5 +449,163 @@ impl SummaryCache {
 
     pub fn size(&self) -> usize {
         self.entries.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_summarize_caching() {
+        let service = SummarizationService::new();
+        let content = "This is a long text that needs to be summarized. It contains multiple sentences and paragraphs.";
+
+        // First call should generate summary
+        let summary1 = service
+            .summarize(content, SummarizationLevel::HighLevel)
+            .await;
+
+        // Second call should use cache (same content and level)
+        let summary2 = service
+            .summarize(content, SummarizationLevel::HighLevel)
+            .await;
+        assert_eq!(summary1, summary2);
+
+        // Different level should generate different summary
+        let summary3 = service
+            .summarize(content, SummarizationLevel::Detailed)
+            .await;
+        assert_ne!(summary1, summary3);
+    }
+
+    #[tokio::test]
+    async fn test_summarize_task() {
+        let service = SummarizationService::new();
+        let mut task = Task::new(
+            "Implement feature X".to_string(),
+            "This task involves creating a new feature that allows users to export data in multiple formats.".to_string()
+        );
+        task.add_tag("backend".to_string());
+        task.add_tag("export".to_string());
+
+        // Use the generic summarize method with task content
+        let content = format!("{}: {}", task.title, task.description);
+        let summary = service
+            .summarize(&content, SummarizationLevel::HighLevel)
+            .await;
+        assert!(!summary.is_empty());
+        assert!(summary.len() <= content.len()); // Summary should not be longer
+    }
+
+    #[tokio::test]
+    async fn test_summarize_goal() {
+        let service = SummarizationService::new();
+        let goal = Goal::new(
+            "Q1 Objectives".to_string(),
+            "Complete the migration to the new infrastructure and launch three new features."
+                .to_string(),
+        );
+
+        // Use the generic summarize method with goal content
+        let content = format!("{}: {}", goal.title, goal.description);
+        let summary = service
+            .summarize(&content, SummarizationLevel::MidLevel)
+            .await;
+        assert!(!summary.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_batch_summarize() {
+        let service = SummarizationService::new();
+        let tasks = vec![
+            Task::new("Task 1".to_string(), "Description 1".to_string()),
+            Task::new("Task 2".to_string(), "Description 2".to_string()),
+            Task::new("Task 3".to_string(), "Description 3".to_string()),
+        ];
+
+        // Summarize each task individually
+        let mut summaries = Vec::new();
+        for task in &tasks {
+            let content = format!("{}: {}", task.title, task.description);
+            let summary = service
+                .summarize(&content, SummarizationLevel::HighLevel)
+                .await;
+            summaries.push(summary);
+        }
+
+        assert_eq!(summaries.len(), tasks.len());
+        for summary in summaries.iter() {
+            assert!(!summary.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_summary_cache() {
+        let mut cache = SummaryCache::new(2);
+
+        let key1 = CacheKey {
+            content_hash: 123,
+            level: SummarizationLevel::HighLevel,
+        };
+        let key2 = CacheKey {
+            content_hash: 456,
+            level: SummarizationLevel::MidLevel,
+        };
+        let key3 = CacheKey {
+            content_hash: 789,
+            level: SummarizationLevel::LowLevel,
+        };
+
+        cache.insert(key1.clone(), "Summary 1".to_string());
+        assert_eq!(cache.size(), 1);
+
+        cache.insert(key2.clone(), "Summary 2".to_string());
+        assert_eq!(cache.size(), 2);
+
+        // Should evict LRU entry when at capacity
+        cache.insert(key3.clone(), "Summary 3".to_string());
+        assert_eq!(cache.size(), 2);
+
+        // Access key2 to update its access count
+        assert!(cache.get(&key2).is_some());
+
+        // Clear cache
+        cache.clear();
+        assert_eq!(cache.size(), 0);
+    }
+
+    #[test]
+    fn test_content_hash() {
+        let content1 = "This is test content";
+        let content2 = "This is test content"; // Same content
+        let content3 = "Different content";
+
+        let hash1 = SummarizationService::hash_content(content1);
+        let hash2 = SummarizationService::hash_content(content2);
+        let hash3 = SummarizationService::hash_content(content3);
+
+        assert_eq!(hash1, hash2); // Same content should have same hash
+        assert_ne!(hash1, hash3); // Different content should have different hash
+    }
+
+    #[test]
+    fn test_summarization_levels() {
+        // Test that different levels produce different summaries
+        let levels = [
+            (SummarizationLevel::HighLevel, "high"),
+            (SummarizationLevel::MidLevel, "mid"),
+            (SummarizationLevel::LowLevel, "low"),
+            (SummarizationLevel::Detailed, "detailed"),
+        ];
+
+        // Just verify the levels are different
+        for (i, (level1, _)) in levels.iter().enumerate() {
+            for (j, (level2, _)) in levels.iter().enumerate() {
+                if i != j {
+                    assert_ne!(level1, level2);
+                }
+            }
+        }
     }
 }

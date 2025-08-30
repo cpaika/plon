@@ -1,6 +1,11 @@
-use crate::domain::{task::Task, goal::Goal, resource::Resource, dependency::Dependency};
+use crate::domain::{
+    claude_code::ClaudeCodeSession, dependency::Dependency, goal::Goal, resource::Resource,
+    task::Task,
+};
 use crate::repository::Repository;
-use crate::services::{TaskService, GoalService, ResourceService, TaskConfigService};
+use crate::services::{
+    ClaudeCodeService, GoalService, ResourceService, TaskConfigService, TaskService,
+};
 use eframe::egui::{self, Context};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -11,14 +16,15 @@ pub struct PlonApp {
     pub(crate) goal_service: Arc<GoalService>,
     pub(crate) resource_service: Arc<ResourceService>,
     pub(crate) task_config_service: Arc<TaskConfigService>,
-    
+    pub(crate) claude_code_service: Option<Arc<tokio::sync::Mutex<ClaudeCodeService>>>,
+
     // UI State
     pub(crate) current_view: ViewType,
     pub(crate) selected_task_id: Option<Uuid>,
     pub(crate) selected_goal_id: Option<Uuid>,
     pub(crate) show_task_editor: bool,
     pub(crate) show_goal_editor: bool,
-    
+
     // View components
     pub(crate) list_view: super::views::list_view::ListView,
     pub(crate) kanban_view: super::views::kanban_view_enhanced::KanbanView,
@@ -30,13 +36,15 @@ pub struct PlonApp {
     pub(crate) resource_view: super::views::resource_view::ResourceView,
     pub(crate) gantt_view: super::views::gantt_view::GanttView,
     pub(crate) goal_view: super::views::goal_view::GoalView,
-    
+    pub(crate) claude_code_view: super::views::claude_code_view::ClaudeCodeView,
+
     // Cache
     pub(crate) tasks: Vec<Task>,
     pub(crate) goals: Vec<Goal>,
     pub(crate) resources: Vec<Resource>,
     pub(crate) dependencies: Vec<Dependency>,
-    
+    pub(crate) claude_sessions: Vec<ClaudeCodeSession>,
+
     // Runtime
     pub(crate) runtime: tokio::runtime::Runtime,
 }
@@ -53,41 +61,53 @@ pub enum ViewType {
     Recurring,
     MetadataConfig,
     Resource,
+    ClaudeCode,
 }
 
 impl PlonApp {
     pub fn new(cc: &eframe::CreationContext<'_>, repository: Repository) -> Self {
         // Setup custom fonts and styles
         setup_custom_fonts(&cc.egui_ctx);
-        
+
         let repository = Arc::new(repository);
         // Use current_thread runtime to avoid thread contention in UI context
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
-        
+
         let task_service = Arc::new(TaskService::new(repository.clone()));
         let goal_service = Arc::new(GoalService::new(repository.clone()));
         let resource_service = Arc::new(ResourceService::new(repository.clone()));
         let task_config_service = Arc::new(TaskConfigService::new(repository.clone()));
-        
+        let claude_code_service = Arc::new(ClaudeCodeService::new(repository.claude_code.clone()));
+        let dependency_service =
+            Arc::new(crate::services::DependencyService::new(repository.clone()));
+
         let mut app = Self {
             repository: repository.clone(),
             task_service: task_service.clone(),
             goal_service: goal_service.clone(),
             resource_service: resource_service.clone(),
             task_config_service: task_config_service.clone(),
-            
+            claude_code_service: Some(Arc::new(tokio::sync::Mutex::new(ClaudeCodeService::new(
+                repository.claude_code.clone(),
+            )))),
+
             current_view: ViewType::Map,
             selected_task_id: None,
             selected_goal_id: None,
             show_task_editor: false,
             show_goal_editor: false,
-            
+
             list_view: super::views::list_view::ListView::new(),
             kanban_view: super::views::kanban_view_enhanced::KanbanView::new(),
-            map_view: super::views::map_view::MapView::new(),
+            map_view: {
+                let mut map = super::views::map_view::MapView::new();
+                map.set_dependency_service(dependency_service.clone());
+                map.set_claude_service(claude_code_service.clone(), repository.clone());
+                map
+            },
             timeline_view: super::views::timeline_view::TimelineView::new(),
             dashboard_view: super::views::dashboard_view::DashboardView::new(),
             recurring_view: super::views::recurring_view::RecurringView::new(),
@@ -95,54 +115,65 @@ impl PlonApp {
             resource_view: super::views::resource_view::ResourceView::new(),
             gantt_view: super::views::gantt_view::GanttView::new(),
             goal_view: super::views::goal_view::GoalView::new(),
-            
+            claude_code_view: super::views::claude_code_view::ClaudeCodeView::new(),
+
             tasks: Vec::new(),
             goals: Vec::new(),
             resources: Vec::new(),
             dependencies: Vec::new(),
-            
+            claude_sessions: Vec::new(),
+
             runtime,
         };
-        
+
         // Load initial data
         app.load_data();
-        
+
         app
     }
-    
+
     fn load_data(&mut self) {
         let task_service = self.task_service.clone();
         let goal_service = self.goal_service.clone();
         let resource_service = self.resource_service.clone();
         let repository = self.repository.clone();
-        
+
         // Load tasks
-        self.tasks = self.runtime.block_on(async {
-            task_service.list_all().await.unwrap_or_default()
-        });
-        
+        self.tasks = self
+            .runtime
+            .block_on(async { task_service.list_all().await.unwrap_or_default() });
+
         // Load goals
-        self.goals = self.runtime.block_on(async {
-            goal_service.list_all().await.unwrap_or_default()
-        });
-        
+        self.goals = self
+            .runtime
+            .block_on(async { goal_service.list_all().await.unwrap_or_default() });
+
         // Load resources
-        self.resources = self.runtime.block_on(async {
-            resource_service.list_all().await.unwrap_or_default()
-        });
-        
+        self.resources = self
+            .runtime
+            .block_on(async { resource_service.list_all().await.unwrap_or_default() });
+
         // Load dependencies
-        self.dependencies = self.runtime.block_on(async {
-            repository.dependencies.list_all().await.unwrap_or_default()
+        self.dependencies = self
+            .runtime
+            .block_on(async { repository.dependencies.list_all().await.unwrap_or_default() });
+
+        // Load Claude Code sessions
+        self.claude_sessions = self.runtime.block_on(async {
+            repository
+                .claude_code
+                .get_active_sessions()
+                .await
+                .unwrap_or_default()
         });
     }
-    
+
     fn show_top_panel(&mut self, ctx: &Context) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("🎯 Plon");
                 ui.separator();
-                
+
                 // View selector
                 ui.selectable_value(&mut self.current_view, ViewType::List, "📋 List");
                 ui.selectable_value(&mut self.current_view, ViewType::Kanban, "📊 Kanban");
@@ -153,33 +184,42 @@ impl PlonApp {
                 ui.selectable_value(&mut self.current_view, ViewType::Goals, "🎯 Goals");
                 ui.selectable_value(&mut self.current_view, ViewType::Recurring, "🔄 Recurring");
                 ui.selectable_value(&mut self.current_view, ViewType::Resource, "👥 Resources");
-                ui.selectable_value(&mut self.current_view, ViewType::MetadataConfig, "⚙️ Metadata");
-                
+                ui.selectable_value(
+                    &mut self.current_view,
+                    ViewType::MetadataConfig,
+                    "⚙️ Metadata",
+                );
+                ui.selectable_value(
+                    &mut self.current_view,
+                    ViewType::ClaudeCode,
+                    "🤖 Claude Code",
+                );
+
                 ui.separator();
-                
+
                 // Quick actions
                 if ui.button("➕ New Task").clicked() {
                     self.show_task_editor = true;
                 }
-                
+
                 if ui.button("🎯 New Goal").clicked() {
                     self.show_goal_editor = true;
                 }
-                
+
                 ui.separator();
-                
+
                 // Search bar
                 ui.label("🔍");
                 let search = ui.text_edit_singleline(&mut String::new());
                 if search.changed() {
                     // TODO: Implement search
                 }
-                
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("⚙️ Settings").clicked() {
                         // TODO: Open settings
                     }
-                    
+
                     if ui.button("🔄 Refresh").clicked() {
                         self.load_data();
                     }
@@ -187,7 +227,7 @@ impl PlonApp {
             });
         });
     }
-    
+
     fn show_main_content(&mut self, ctx: &Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             match self.current_view {
@@ -205,14 +245,20 @@ impl PlonApp {
                 }
                 ViewType::Gantt => {
                     // Use cached dependencies instead of loading them every frame
-                    if self.gantt_view.show(ui, &mut self.tasks, &self.resources, &self.dependencies) {
+                    if self.gantt_view.show(
+                        ui,
+                        &mut self.tasks,
+                        &self.resources,
+                        &self.dependencies,
+                    ) {
                         // Tasks were modified - mark as dirty for batch save
                         // DON'T spawn a new task every time!
                         // This was causing task accumulation in the runtime
                     }
                 }
                 ViewType::Dashboard => {
-                    self.dashboard_view.show(ui, &self.tasks, &self.goals, &self.resources);
+                    self.dashboard_view
+                        .show(ui, &self.tasks, &self.goals, &self.resources);
                 }
                 ViewType::Goals => {
                     if let Some(action) = self.goal_view.show(ui, &mut self.goals) {
@@ -223,15 +269,19 @@ impl PlonApp {
                     self.recurring_view.show(ui, None);
                 }
                 ViewType::MetadataConfig => {
-                    self.metadata_config_view.show(ui, Some(self.task_config_service.clone()));
+                    self.metadata_config_view
+                        .show(ui, Some(self.task_config_service.clone()));
                 }
                 ViewType::Resource => {
                     self.resource_view.show(ui, &mut self.resources);
                 }
+                ViewType::ClaudeCode => {
+                    self.claude_code_view.show(ui, &self.repository);
+                }
             }
         });
     }
-    
+
     fn show_modals(&mut self, ctx: &Context) {
         // Task editor modal
         if self.show_task_editor {
@@ -242,13 +292,33 @@ impl PlonApp {
                 .show(ctx, |ui| {
                     if let Some(task_id) = self.selected_task_id {
                         if let Some(task) = self.tasks.iter_mut().find(|t| t.id == task_id) {
-                            super::widgets::task_editor::show_task_editor(ui, task, &self.resources);
+                            let mut launch_claude = None;
+                            super::widgets::task_editor::show_task_editor(
+                                ui,
+                                task,
+                                &self.resources,
+                                &self.claude_sessions,
+                                Some(&mut |task_id| {
+                                    launch_claude = Some(task_id);
+                                }),
+                            );
+
+                            // Handle Claude Code launch
+                            if let Some(task_id_to_launch) = launch_claude {
+                                self.launch_claude_code_for_task(task_id_to_launch);
+                            }
                         }
                     } else {
                         // New task
                         let mut new_task = Task::new("New Task".to_string(), String::new());
-                        super::widgets::task_editor::show_task_editor(ui, &mut new_task, &self.resources);
-                        
+                        super::widgets::task_editor::show_task_editor(
+                            ui,
+                            &mut new_task,
+                            &self.resources,
+                            &self.claude_sessions,
+                            None,
+                        );
+
                         ui.separator();
                         ui.horizontal(|ui| {
                             if ui.button("Create").clicked() {
@@ -260,7 +330,7 @@ impl PlonApp {
                                 self.tasks.push(new_task);
                                 self.show_task_editor = false;
                             }
-                            
+
                             if ui.button("Cancel").clicked() {
                                 self.show_task_editor = false;
                             }
@@ -268,7 +338,7 @@ impl PlonApp {
                     }
                 });
         }
-        
+
         // Goal editor modal
         if self.show_goal_editor {
             egui::Window::new("Goal Editor")
@@ -278,7 +348,7 @@ impl PlonApp {
                 .show(ctx, |ui| {
                     // TODO: Implement goal editor
                     ui.label("Goal editor coming soon...");
-                    
+
                     if ui.button("Close").clicked() {
                         self.show_goal_editor = false;
                     }
@@ -288,28 +358,93 @@ impl PlonApp {
 }
 
 impl PlonApp {
+    fn launch_claude_code_for_task(&mut self, task_id: Uuid) {
+        // Find the task
+        let task = match self.tasks.iter().find(|t| t.id == task_id) {
+            Some(t) => t.clone(),
+            None => return,
+        };
+
+        // Get Claude Code service
+        let claude_service = match &self.claude_code_service {
+            Some(s) => s.clone(),
+            None => return,
+        };
+
+        let repository = self.repository.clone();
+
+        // Launch Claude Code in background
+        self.runtime.spawn(async move {
+            // Get or create config
+            let config = match repository.claude_code.get_config().await {
+                Ok(Some(c)) => c,
+                Ok(None) => {
+                    // Create default config - user needs to configure it
+                    let config = crate::domain::claude_code::ClaudeCodeConfig::new(
+                        "your-repo".to_string(),
+                        "your-github-username".to_string(),
+                    );
+                    repository.claude_code.create_config(&config).await.ok();
+                    config
+                }
+                Err(_) => return,
+            };
+
+            // Get template
+            let template = match repository.claude_code.get_default_template().await {
+                Ok(Some(t)) => t,
+                _ => {
+                    // Use a basic template if none exists
+                    crate::domain::claude_code::ClaudePromptTemplate::new(
+                        "basic".to_string(),
+                        "Task: {{task_title}}\n\nDescription:\n{{task_description}}".to_string(),
+                    )
+                }
+            };
+
+            // Launch Claude Code
+            let mut service = claude_service.lock().await;
+            match service.launch_claude_code(&task, &config, &template).await {
+                Ok(session) => {
+                    println!("Claude Code session started: {}", session.id);
+                }
+                Err(e) => {
+                    eprintln!("Failed to launch Claude Code: {}", e);
+                }
+            }
+        });
+    }
+
     fn handle_goal_action(&mut self, action: super::views::goal_view::GoalAction) {
         use super::views::goal_view::GoalAction;
-        
+
         match action {
-            GoalAction::Create { title, description, parent_id } => {
+            GoalAction::Create {
+                title,
+                description,
+                parent_id,
+            } => {
                 let goal_service = self.goal_service.clone();
                 let mut goal = Goal::new(title, description);
                 goal.parent_goal_id = parent_id;
-                
+
                 let goal_clone = goal.clone();
                 self.runtime.spawn(async move {
                     goal_service.create(goal_clone).await.ok();
                 });
-                
+
                 self.goals.push(goal);
             }
-            GoalAction::Update { id, title, description } => {
+            GoalAction::Update {
+                id,
+                title,
+                description,
+            } => {
                 if let Some(goal) = self.goals.iter_mut().find(|g| g.id == id) {
                     goal.title = title;
                     goal.description = description;
                     goal.updated_at = chrono::Utc::now();
-                    
+
                     let goal_service = self.goal_service.clone();
                     let goal_clone = goal.clone();
                     self.runtime.spawn(async move {
@@ -319,7 +454,7 @@ impl PlonApp {
             }
             GoalAction::Delete { id } => {
                 self.goals.retain(|g| g.id != id);
-                
+
                 let goal_service = self.goal_service.clone();
                 self.runtime.spawn(async move {
                     goal_service.delete(id).await.ok();
@@ -328,7 +463,7 @@ impl PlonApp {
             GoalAction::ChangeStatus { id, status } => {
                 if let Some(goal) = self.goals.iter_mut().find(|g| g.id == id) {
                     goal.update_status(status);
-                    
+
                     let goal_service = self.goal_service.clone();
                     let goal_clone = goal.clone();
                     self.runtime.spawn(async move {
@@ -345,7 +480,7 @@ impl eframe::App for PlonApp {
         self.show_top_panel(ctx);
         self.show_main_content(ctx);
         self.show_modals(ctx);
-        
+
         // FIXED: Don't request repaint unconditionally - this was causing auto-scrolling!
         // Only request repaint when there are actual animations or updates needed
         // ctx.request_repaint();
@@ -354,15 +489,31 @@ impl eframe::App for PlonApp {
 
 fn setup_custom_fonts(ctx: &Context) {
     let mut style = (*ctx.style()).clone();
-    
+
     // Increase default text size
     style.text_styles = [
-        (egui::TextStyle::Small, egui::FontId::new(12.0, egui::FontFamily::Proportional)),
-        (egui::TextStyle::Body, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
-        (egui::TextStyle::Button, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
-        (egui::TextStyle::Heading, egui::FontId::new(20.0, egui::FontFamily::Proportional)),
-        (egui::TextStyle::Monospace, egui::FontId::new(13.0, egui::FontFamily::Monospace)),
-    ].into();
-    
+        (
+            egui::TextStyle::Small,
+            egui::FontId::new(12.0, egui::FontFamily::Proportional),
+        ),
+        (
+            egui::TextStyle::Body,
+            egui::FontId::new(14.0, egui::FontFamily::Proportional),
+        ),
+        (
+            egui::TextStyle::Button,
+            egui::FontId::new(14.0, egui::FontFamily::Proportional),
+        ),
+        (
+            egui::TextStyle::Heading,
+            egui::FontId::new(20.0, egui::FontFamily::Proportional),
+        ),
+        (
+            egui::TextStyle::Monospace,
+            egui::FontId::new(13.0, egui::FontFamily::Monospace),
+        ),
+    ]
+    .into();
+
     ctx.set_style(style);
 }

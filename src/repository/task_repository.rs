@@ -78,7 +78,7 @@ impl TaskRepository {
         let rowid: i64 = sqlx::query_scalar("SELECT last_insert_rowid()")
             .fetch_one(&mut *tx)
             .await?;
-        
+
         sqlx::query(
             r#"
             INSERT INTO tasks_spatial (id, min_x, max_x, min_y, max_y)
@@ -164,7 +164,7 @@ impl TaskRepository {
             .bind(task.id.to_string())
             .fetch_optional(&mut *tx)
             .await?;
-        
+
         if let Some(rowid) = rowid {
             sqlx::query("DELETE FROM tasks_spatial WHERE id = ?")
                 .bind(rowid)
@@ -227,8 +227,10 @@ impl TaskRepository {
                     title: description.clone(),
                     description,
                     completed: subtask_row.get::<i32, _>("completed") != 0,
-                    created_at: DateTime::parse_from_rfc3339(subtask_row.get("created_at"))?.with_timezone(&Utc),
-                    completed_at: subtask_row.get::<Option<String>, _>("completed_at")
+                    created_at: DateTime::parse_from_rfc3339(subtask_row.get("created_at"))?
+                        .with_timezone(&Utc),
+                    completed_at: subtask_row
+                        .get::<Option<String>, _>("completed_at")
                         .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                         .map(|dt| dt.with_timezone(&Utc)),
                 });
@@ -248,7 +250,7 @@ impl TaskRepository {
             .bind(id.to_string())
             .fetch_optional(&mut *tx)
             .await?;
-        
+
         if let Some(rowid) = rowid {
             sqlx::query("DELETE FROM tasks_spatial WHERE id = ?")
                 .bind(rowid)
@@ -336,8 +338,10 @@ impl TaskRepository {
                     title: description.clone(),
                     description,
                     completed: subtask_row.get::<i32, _>("completed") != 0,
-                    created_at: DateTime::parse_from_rfc3339(subtask_row.get("created_at"))?.with_timezone(&Utc),
-                    completed_at: subtask_row.get::<Option<String>, _>("completed_at")
+                    created_at: DateTime::parse_from_rfc3339(subtask_row.get("created_at"))?
+                        .with_timezone(&Utc),
+                    completed_at: subtask_row
+                        .get::<Option<String>, _>("completed_at")
                         .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                         .map(|dt| dt.with_timezone(&Utc)),
                 });
@@ -349,7 +353,13 @@ impl TaskRepository {
         Ok(tasks)
     }
 
-    pub async fn find_in_area(&self, min_x: f64, max_x: f64, min_y: f64, max_y: f64) -> Result<Vec<Task>> {
+    pub async fn find_in_area(
+        &self,
+        min_x: f64,
+        max_x: f64,
+        min_y: f64,
+        max_y: f64,
+    ) -> Result<Vec<Task>> {
         let rows = sqlx::query(
             r#"
             SELECT t.id, t.title, t.description, t.status, t.priority,
@@ -389,22 +399,28 @@ impl TaskRepository {
             tags: serde_json::from_str(row.get("tags"))?,
             created_at: DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc),
             updated_at: DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc),
-            due_date: row.get::<Option<String>, _>("due_date")
+            due_date: row
+                .get::<Option<String>, _>("due_date")
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc)),
-            scheduled_date: row.get::<Option<String>, _>("scheduled_date")
+            scheduled_date: row
+                .get::<Option<String>, _>("scheduled_date")
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc)),
-            completed_at: row.get::<Option<String>, _>("completed_at")
+            completed_at: row
+                .get::<Option<String>, _>("completed_at")
                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                 .map(|dt| dt.with_timezone(&Utc)),
             estimated_hours: row.get("estimated_hours"),
             actual_hours: row.get("actual_hours"),
-            assigned_resource_id: row.get::<Option<String>, _>("assigned_resource_id")
+            assigned_resource_id: row
+                .get::<Option<String>, _>("assigned_resource_id")
                 .and_then(|s| Uuid::parse_str(&s).ok()),
-            goal_id: row.get::<Option<String>, _>("goal_id")
+            goal_id: row
+                .get::<Option<String>, _>("goal_id")
                 .and_then(|s| Uuid::parse_str(&s).ok()),
-            parent_task_id: row.get::<Option<String>, _>("parent_task_id")
+            parent_task_id: row
+                .get::<Option<String>, _>("parent_task_id")
                 .and_then(|s| Uuid::parse_str(&s).ok()),
             position: Position {
                 x: row.get("position_x"),
@@ -413,7 +429,8 @@ impl TaskRepository {
             subtasks: Vec::new(), // Will be filled separately
             is_archived: row.get::<Option<i32>, _>("is_archived").unwrap_or(0) != 0,
             assignee: row.get::<Option<String>, _>("assignee"),
-            configuration_id: row.get::<Option<String>, _>("configuration_id")
+            configuration_id: row
+                .get::<Option<String>, _>("configuration_id")
                 .and_then(|s| Uuid::parse_str(&s).ok()),
         })
     }
@@ -483,7 +500,7 @@ mod tests {
         // Create task
         let mut task = Task::new("Test Task".to_string(), "Description".to_string());
         task.add_subtask("Subtask 1".to_string());
-        
+
         repo.create(&task).await.unwrap();
 
         // Read task
@@ -514,10 +531,10 @@ mod tests {
         // Create multiple tasks
         let mut task1 = Task::new("Task 1".to_string(), "".to_string());
         task1.update_status(TaskStatus::Todo);
-        
+
         let mut task2 = Task::new("Task 2".to_string(), "".to_string());
         task2.update_status(TaskStatus::InProgress);
-        
+
         let mut task3 = Task::new("Task 3".to_string(), "".to_string());
         task3.update_status(TaskStatus::Done);
 
@@ -546,10 +563,10 @@ mod tests {
 
         let mut task1 = Task::new("Task 1".to_string(), "".to_string());
         task1.set_position(10.0, 10.0);
-        
+
         let mut task2 = Task::new("Task 2".to_string(), "".to_string());
         task2.set_position(50.0, 50.0);
-        
+
         let mut task3 = Task::new("Task 3".to_string(), "".to_string());
         task3.set_position(100.0, 100.0);
 

@@ -1,19 +1,18 @@
-use eframe::{egui, NativeOptions};
-use plon::ui::PlonApp;
-use plon::repository::Repository;
+use eframe::{NativeOptions, egui};
 use plon::domain::task::Task;
+use plon::repository::Repository;
+use plon::ui::PlonApp;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::time::{Duration, Instant};
 
 fn main() {
     println!("=== Debug Freeze Test ===");
-    
+
     let options = NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1200.0, 800.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([1200.0, 800.0]),
         ..Default::default()
     };
-    
+
     let _ = eframe::run_native(
         "Debug Test",
         options,
@@ -24,28 +23,22 @@ fn main() {
                     .connect("sqlite::memory:")
                     .await
                     .unwrap();
-                
-                sqlx::migrate!("./migrations")
-                    .run(&pool)
-                    .await
-                    .unwrap();
-                
+
+                sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+
                 let repo = Repository::new(pool);
-                
+
                 // Add test tasks
                 for i in 0..10 {
-                    let task = Task::new(
-                        format!("Task {}", i),
-                        format!("Description {}", i)
-                    );
+                    let task = Task::new(format!("Task {}", i), format!("Description {}", i));
                     let _ = repo.tasks.create(&task).await;
                 }
-                
+
                 repo
             });
-            
+
             let app = PlonApp::new(cc, repository);
-            
+
             Box::new(DebugTestApp {
                 app,
                 test_start: Instant::now(),
@@ -67,9 +60,9 @@ impl eframe::App for DebugTestApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let update_start = Instant::now();
         self.frame_count += 1;
-        
+
         let elapsed = self.test_start.elapsed();
-        
+
         // Navigate to map view
         if elapsed < Duration::from_millis(500) {
             // Wait
@@ -99,25 +92,29 @@ impl eframe::App for DebugTestApp {
             println!("Test done");
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        
+
         // Measure app update time
         let before_app = Instant::now();
         self.app.update(ctx, frame);
         let app_time = before_app.elapsed();
-        
+
         // Print if slow
         if app_time > Duration::from_millis(50) {
-            println!("SLOW FRAME {} at {:?}: app.update took {:?}", 
-                     self.frame_count, elapsed, app_time);
+            println!(
+                "SLOW FRAME {} at {:?}: app.update took {:?}",
+                self.frame_count, elapsed, app_time
+            );
         }
-        
+
         // Print periodic status
         if self.frame_count % 60 == 0 {
             let frame_time = update_start.saturating_duration_since(self.last_update_time);
-            println!("Frame {} at {:?}, frame time: {:?}", 
-                     self.frame_count, elapsed, frame_time);
+            println!(
+                "Frame {} at {:?}, frame time: {:?}",
+                self.frame_count, elapsed, frame_time
+            );
         }
-        
+
         self.last_update_time = update_start;
         ctx.request_repaint();
     }

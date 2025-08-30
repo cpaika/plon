@@ -1,6 +1,6 @@
 use eframe::egui;
 use egui::CentralPanel;
-use plon::domain::task::{Task, TaskStatus};
+use plon::domain::task::TaskStatus;
 
 /// Test harness for running egui tests in headless mode
 pub struct HeadlessHarness {
@@ -8,12 +8,18 @@ pub struct HeadlessHarness {
     output: egui::FullOutput,
 }
 
+impl Default for HeadlessHarness {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HeadlessHarness {
     pub fn new() -> Self {
         let ctx = egui::Context::default();
         let raw_input = egui::RawInput::default();
         let output = ctx.run(raw_input, |_| {});
-        
+
         Self { ctx, output }
     }
 
@@ -28,7 +34,7 @@ impl HeadlessHarness {
             )),
             ..Default::default()
         };
-        
+
         self.ctx.run(raw_input, f)
     }
 
@@ -54,7 +60,7 @@ impl HeadlessHarness {
             ],
             ..Default::default()
         };
-        
+
         self.output = self.ctx.run(raw_input, |_| {});
     }
 
@@ -92,7 +98,7 @@ impl HeadlessHarness {
             ],
             ..Default::default()
         };
-        
+
         self.output = self.ctx.run(raw_input, |_| {});
     }
 
@@ -119,7 +125,7 @@ impl HeadlessHarness {
             ],
             ..Default::default()
         };
-        
+
         self.output = self.ctx.run(raw_input, |_| {});
     }
 
@@ -132,7 +138,7 @@ impl HeadlessHarness {
             events: vec![egui::Event::Scroll(delta)],
             ..Default::default()
         };
-        
+
         self.output = self.ctx.run(raw_input, |_| {});
     }
 
@@ -145,7 +151,7 @@ impl HeadlessHarness {
             events: vec![egui::Event::Text(text.to_string())],
             ..Default::default()
         };
-        
+
         self.output = self.ctx.run(raw_input, |_| {});
     }
 }
@@ -158,7 +164,7 @@ mod headless_tests {
     fn test_button_click() {
         let mut harness = HeadlessHarness::new();
         let mut clicked = false;
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 if ui.button("Test Button").clicked() {
@@ -166,7 +172,7 @@ mod headless_tests {
                 }
             });
         });
-        
+
         // Note: In a real test, we'd need to calculate the button position
         // This is a simplified example
         assert!(!clicked); // Button not clicked yet
@@ -176,15 +182,15 @@ mod headless_tests {
     fn test_text_edit() {
         let mut harness = HeadlessHarness::new();
         let mut text = String::new();
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 ui.text_edit_singleline(&mut text);
             });
         });
-        
+
         harness.type_text("Hello, World!");
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 ui.text_edit_singleline(&mut text);
@@ -197,9 +203,9 @@ mod headless_tests {
         let mut harness = HeadlessHarness::new();
         let from = egui::Pos2::new(100.0, 100.0);
         let to = egui::Pos2::new(200.0, 200.0);
-        
+
         harness.drag(from, to);
-        
+
         // Verify drag delta
         let delta = to - from;
         assert_eq!(delta.x, 100.0);
@@ -209,8 +215,8 @@ mod headless_tests {
     #[test]
     fn test_scroll_interaction() {
         let mut harness = HeadlessHarness::new();
-        let mut scroll_area_offset = 0.0;
-        
+        let scroll_area_offset = 0.0;
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -220,10 +226,10 @@ mod headless_tests {
                 });
             });
         });
-        
+
         // Simulate scroll
         harness.scroll(egui::Vec2::new(0.0, -100.0));
-        
+
         // In a real implementation, we'd verify the scroll offset changed
     }
 
@@ -232,7 +238,7 @@ mod headless_tests {
         let mut harness = HeadlessHarness::new();
         let mut show_window = true;
         let mut window_closed = false;
-        
+
         harness.run_frame(|ctx| {
             if show_window {
                 egui::Window::new("Test Window")
@@ -246,7 +252,7 @@ mod headless_tests {
                     });
             }
         });
-        
+
         assert!(!window_closed);
     }
 
@@ -254,7 +260,7 @@ mod headless_tests {
     fn test_combo_box() {
         let mut harness = HeadlessHarness::new();
         let mut selected = TaskStatus::Todo;
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 egui::ComboBox::from_label("Status")
@@ -266,7 +272,7 @@ mod headless_tests {
                     });
             });
         });
-        
+
         assert_eq!(selected, TaskStatus::Todo);
     }
 
@@ -274,28 +280,28 @@ mod headless_tests {
     fn test_progress_bar() {
         let mut harness = HeadlessHarness::new();
         let progress = 0.75;
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 ui.add(egui::ProgressBar::new(progress).show_percentage());
             });
         });
-        
+
         // Progress bar should render without panic
-        assert!(progress >= 0.0 && progress <= 1.0);
+        assert!((0.0..=1.0).contains(&progress));
     }
 
     #[test]
     fn test_color_picker() {
         let mut harness = HeadlessHarness::new();
         let mut color = egui::Color32::from_rgb(255, 0, 0);
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 ui.color_edit_button_srgba(&mut color);
             });
         });
-        
+
         assert_eq!(color, egui::Color32::from_rgb(255, 0, 0));
     }
 
@@ -303,13 +309,13 @@ mod headless_tests {
     fn test_slider() {
         let mut harness = HeadlessHarness::new();
         let mut value = 50.0;
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 ui.add(egui::Slider::new(&mut value, 0.0..=100.0));
             });
         });
-        
+
         assert_eq!(value, 50.0);
     }
 
@@ -317,13 +323,13 @@ mod headless_tests {
     fn test_checkbox() {
         let mut harness = HeadlessHarness::new();
         let mut checked = false;
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 ui.checkbox(&mut checked, "Test Checkbox");
             });
         });
-        
+
         assert!(!checked);
     }
 
@@ -331,7 +337,7 @@ mod headless_tests {
     fn test_radio_buttons() {
         let mut harness = HeadlessHarness::new();
         let mut selected = 1;
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 ui.radio_value(&mut selected, 0, "Option 0");
@@ -339,14 +345,14 @@ mod headless_tests {
                 ui.radio_value(&mut selected, 2, "Option 2");
             });
         });
-        
+
         assert_eq!(selected, 1);
     }
 
     #[test]
     fn test_collapsing_header() {
         let mut harness = HeadlessHarness::new();
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 ui.collapsing("Header", |ui| {
@@ -354,14 +360,14 @@ mod headless_tests {
                 });
             });
         });
-        
+
         // Test runs without panic
     }
 
     #[test]
     fn test_tabs() {
         let mut harness = HeadlessHarness::new();
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 ui.horizontal(|ui| {
@@ -374,27 +380,27 @@ mod headless_tests {
                 });
             });
         });
-        
+
         // Test runs without panic
     }
 
     #[test]
     fn test_tooltip() {
         let mut harness = HeadlessHarness::new();
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 ui.label("Hover me").on_hover_text("This is a tooltip");
             });
         });
-        
+
         // Test runs without panic
     }
 
     #[test]
     fn test_context_menu() {
         let mut harness = HeadlessHarness::new();
-        
+
         harness.run_frame(|ctx| {
             CentralPanel::default().show(ctx, |ui| {
                 let response = ui.label("Right-click me");
@@ -408,7 +414,7 @@ mod headless_tests {
                 });
             });
         });
-        
+
         // Test runs without panic
     }
 }

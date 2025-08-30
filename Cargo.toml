@@ -17,6 +17,7 @@ path = "src/main.rs"
 tokio = { version = "1.35", features = ["full"] }
 anyhow = "1.0"
 thiserror = "1.0"
+async-trait = "0.1"
 image = "0.24"  # For screenshot analysis in tests
 parking_lot = "0.12"  # For thread-safe mutexes in tests
 
@@ -74,4 +75,9 @@ imageproc = "0.23"  # For image processing in tests
 [[bench]]
 name = "performance_benchmark"
 harness = false
+
+[[bench]]
+name = "claude_code_performance_tests"
+harness = false
+path = "tests/claude_code_performance_tests.rs"
 

@@ -32,7 +32,12 @@ pub struct Attachment {
 }
 
 impl Comment {
-    pub fn new(entity_id: Uuid, entity_type: EntityType, author_name: String, content: String) -> Self {
+    pub fn new(
+        entity_id: Uuid,
+        entity_type: EntityType,
+        author_name: String,
+        content: String,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
@@ -54,7 +59,13 @@ impl Comment {
         self.updated_at = Utc::now();
     }
 
-    pub fn add_attachment(&mut self, filename: String, mime_type: String, size_bytes: usize, url: String) {
+    pub fn add_attachment(
+        &mut self,
+        filename: String,
+        mime_type: String,
+        size_bytes: usize,
+        url: String,
+    ) {
         self.attachments.push(Attachment {
             id: Uuid::new_v4(),
             filename,
@@ -87,9 +98,9 @@ mod tests {
             task_id,
             EntityType::Task,
             "Alice".to_string(),
-            "This looks good!".to_string()
+            "This looks good!".to_string(),
         );
-        
+
         assert_eq!(comment.entity_id, task_id);
         assert_eq!(comment.entity_type, EntityType::Task);
         assert_eq!(comment.author_name, "Alice");
@@ -104,15 +115,15 @@ mod tests {
             Uuid::new_v4(),
             EntityType::Goal,
             "Bob".to_string(),
-            "Initial comment".to_string()
+            "Initial comment".to_string(),
         );
-        
+
         assert!(!comment.edited);
         let original_updated = comment.updated_at;
-        
+
         std::thread::sleep(std::time::Duration::from_millis(10));
         comment.edit("Updated comment".to_string());
-        
+
         assert_eq!(comment.content, "Updated comment");
         assert!(comment.edited);
         assert!(comment.updated_at > original_updated);
@@ -124,24 +135,24 @@ mod tests {
             Uuid::new_v4(),
             EntityType::Task,
             "Charlie".to_string(),
-            "See attachment".to_string()
+            "See attachment".to_string(),
         );
-        
+
         comment.add_attachment(
             "document.pdf".to_string(),
             "application/pdf".to_string(),
             1024000,
-            "/uploads/document.pdf".to_string()
+            "/uploads/document.pdf".to_string(),
         );
-        
+
         assert_eq!(comment.attachments.len(), 1);
         assert_eq!(comment.attachments[0].filename, "document.pdf");
         assert_eq!(comment.attachments[0].size_bytes, 1024000);
-        
+
         let attachment_id = comment.attachments[0].id;
         assert!(comment.remove_attachment(attachment_id));
         assert!(comment.attachments.is_empty());
-        
+
         assert!(!comment.remove_attachment(Uuid::new_v4()));
     }
 }

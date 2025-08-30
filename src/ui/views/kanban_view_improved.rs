@@ -1,11 +1,13 @@
-use crate::domain::task::{Task, TaskStatus, Priority};
-use crate::ui::widgets::task_detail_modal::TaskDetailModal;
+use crate::domain::task::{Priority, Task, TaskStatus};
 use crate::repository::comment_repository::CommentRepository;
-use eframe::egui::{self, Ui, Rect, Pos2, Vec2, Color32, Rounding, Align2, Sense, CursorIcon, ScrollArea};
-use std::collections::{HashMap, HashSet};
+use crate::ui::widgets::task_detail_modal::TaskDetailModal;
 use chrono::Utc;
-use uuid::Uuid;
+use eframe::egui::{
+    self, Align2, Color32, CursorIcon, Pos2, Rect, Rounding, ScrollArea, Sense, Ui, Vec2,
+};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use uuid::Uuid;
 
 pub struct KanbanView {
     pub columns: Vec<KanbanColumn>,
@@ -55,13 +57,19 @@ pub struct QuickAddState {
     pub text: String,
 }
 
+impl Default for KanbanView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KanbanView {
     pub fn new() -> Self {
         // Initialize columns with proper bounds
         let spacing = 16.0;
         let column_width = 300.0;
         let x_offset = spacing;
-        
+
         let columns = vec![
             KanbanColumn {
                 id: Uuid::new_v4(),
@@ -76,7 +84,7 @@ impl KanbanView {
                 wip_limit: None,
                 bounds: Rect::from_min_size(
                     Pos2::new(x_offset, 100.0),
-                    Vec2::new(column_width, 600.0)
+                    Vec2::new(column_width, 600.0),
                 ),
                 visible: true,
                 position: 0,
@@ -94,7 +102,7 @@ impl KanbanView {
                 wip_limit: Some(3),
                 bounds: Rect::from_min_size(
                     Pos2::new(x_offset + column_width + spacing, 100.0),
-                    Vec2::new(column_width, 600.0)
+                    Vec2::new(column_width, 600.0),
                 ),
                 visible: true,
                 position: 1,
@@ -112,7 +120,7 @@ impl KanbanView {
                 wip_limit: Some(2),
                 bounds: Rect::from_min_size(
                     Pos2::new(x_offset + (column_width + spacing) * 2.0, 100.0),
-                    Vec2::new(column_width, 600.0)
+                    Vec2::new(column_width, 600.0),
                 ),
                 visible: true,
                 position: 2,
@@ -130,7 +138,7 @@ impl KanbanView {
                 wip_limit: None,
                 bounds: Rect::from_min_size(
                     Pos2::new(x_offset + (column_width + spacing) * 3.0, 100.0),
-                    Vec2::new(column_width, 600.0)
+                    Vec2::new(column_width, 600.0),
                 ),
                 visible: true,
                 position: 3,
@@ -155,7 +163,7 @@ impl KanbanView {
             task_detail_modal: TaskDetailModal::new(),
             comment_repository: None,
         };
-        
+
         // Initialize layout
         instance.update_layout(1200.0);
         instance
@@ -187,7 +195,7 @@ impl KanbanView {
     pub fn update_drag_position(&mut self, position: Pos2) {
         // Calculate hover column first
         let hover_column = self.get_column_at_position(position);
-        
+
         if let Some(ctx) = &mut self.drag_context {
             ctx.current_position = position;
             ctx.hover_column = hover_column;
@@ -201,48 +209,48 @@ impl KanbanView {
     pub fn complete_drag(&mut self, target_column: usize) {
         if let Some(ctx) = &self.drag_context {
             let task_id = ctx.task_id;
-            
+
             // Remove from original column
             if let Some((orig_col, _)) = self.find_task_position(task_id) {
                 self.columns[orig_col].tasks.retain(|&id| id != task_id);
             }
-            
+
             // Add to target column
             if target_column < self.columns.len() {
                 self.columns[target_column].tasks.push(task_id);
-                
+
                 // Update task status
                 if let Some(task) = self.tasks.iter_mut().find(|t| t.id == task_id) {
                     task.status = self.columns[target_column].status;
                 }
             }
         }
-        
+
         self.drag_context = None;
     }
 
     pub fn complete_drag_with_reorder(&mut self, column_index: usize, position: usize) {
         if let Some(ctx) = &self.drag_context {
             let task_id = ctx.task_id;
-            
+
             // Remove from original position
             if let Some((orig_col, _)) = self.find_task_position(task_id) {
                 self.columns[orig_col].tasks.retain(|&id| id != task_id);
             }
-            
+
             // Insert at specific position
             if column_index < self.columns.len() {
                 let column = &mut self.columns[column_index];
                 let insert_pos = position.min(column.tasks.len());
                 column.tasks.insert(insert_pos, task_id);
-                
+
                 // Update task status
                 if let Some(task) = self.tasks.iter_mut().find(|t| t.id == task_id) {
                     task.status = self.columns[column_index].status;
                 }
             }
         }
-        
+
         self.drag_context = None;
     }
 
@@ -255,13 +263,14 @@ impl KanbanView {
         if column_index >= self.columns.len() {
             return false;
         }
-        
+
         let column = &self.columns[column_index];
         column.bounds.contains(position)
     }
 
     pub fn get_column_at_position(&self, position: Pos2) -> Option<usize> {
-        self.columns.iter()
+        self.columns
+            .iter()
             .position(|col| col.bounds.contains(position))
     }
 
@@ -269,19 +278,24 @@ impl KanbanView {
         if column_index >= self.columns.len() {
             return Vec::new();
         }
-        
+
         let column = &self.columns[column_index];
-        
+
         // If the column has a specific task order, use that
         if !column.tasks.is_empty() {
-            column.tasks.iter()
+            column
+                .tasks
+                .iter()
                 .filter_map(|task_id| {
-                    self.tasks.iter().find(|t| t.id == *task_id && self.matches_filter(t))
+                    self.tasks
+                        .iter()
+                        .find(|t| t.id == *task_id && self.matches_filter(t))
                 })
                 .collect()
         } else {
             // Otherwise, filter by status
-            self.tasks.iter()
+            self.tasks
+                .iter()
                 .filter(|task| task.status == column.status && self.matches_filter(task))
                 .collect()
         }
@@ -294,7 +308,8 @@ impl KanbanView {
     pub fn set_wip_limit(&mut self, column_index: usize, limit: usize) {
         if column_index < self.columns.len() {
             self.columns[column_index].wip_limit = Some(limit);
-            self.wip_limits.insert(self.columns[column_index].title.clone(), limit);
+            self.wip_limits
+                .insert(self.columns[column_index].title.clone(), limit);
         }
     }
 
@@ -302,7 +317,7 @@ impl KanbanView {
         if column_index >= self.columns.len() {
             return false;
         }
-        
+
         let column = &self.columns[column_index];
         if let Some(limit) = column.wip_limit {
             self.get_column_task_count(column_index) > limit
@@ -315,7 +330,7 @@ impl KanbanView {
         if column_index >= self.columns.len() {
             return String::new();
         }
-        
+
         match self.columns[column_index].status {
             TaskStatus::Todo => "No tasks to do yet".to_string(),
             TaskStatus::InProgress => "No tasks in progress".to_string(),
@@ -330,7 +345,8 @@ impl KanbanView {
         if column_index < self.columns.len() {
             let column = &mut self.columns[column_index];
             column.collapsed = !column.collapsed;
-            self.column_collapse_state.insert(column.title.clone(), column.collapsed);
+            self.column_collapse_state
+                .insert(column.title.clone(), column.collapsed);
         }
     }
 
@@ -352,7 +368,7 @@ impl KanbanView {
         }
         self.tasks.push(task);
     }
-    
+
     pub fn select_task(&mut self, task_id: Uuid) {
         self.selected_task_id = Some(task_id);
         self.selected_tasks.clear();
@@ -376,16 +392,16 @@ impl KanbanView {
         if target_column >= self.columns.len() {
             return;
         }
-        
+
         let target_status = self.columns[target_column].status;
-        
+
         for task_id in &self.selected_tasks {
             // Update task status
             if let Some(task) = self.tasks.iter_mut().find(|t| t.id == *task_id) {
                 task.status = target_status;
             }
         }
-        
+
         self.clear_selection();
     }
 
@@ -393,10 +409,13 @@ impl KanbanView {
     pub fn enable_quick_add(&mut self, column_index: usize) {
         if column_index < self.columns.len() {
             let column_title = self.columns[column_index].title.clone();
-            self.quick_add_states.insert(column_title, QuickAddState {
-                visible: true,
-                text: String::new(),
-            });
+            self.quick_add_states.insert(
+                column_title,
+                QuickAddState {
+                    visible: true,
+                    text: String::new(),
+                },
+            );
         }
     }
 
@@ -404,7 +423,7 @@ impl KanbanView {
         if column_index >= self.columns.len() {
             return false;
         }
-        
+
         self.quick_add_states
             .get(&self.columns[column_index].title)
             .map(|state| state.visible)
@@ -415,13 +434,13 @@ impl KanbanView {
         if column_index >= self.columns.len() || title.trim().is_empty() {
             return;
         }
-        
+
         let mut task = Task::new(title, String::new());
         task.status = self.columns[column_index].status;
-        
+
         self.columns[column_index].tasks.push(task.id);
         self.tasks.push(task);
-        
+
         // Clear quick add state
         let column_title = self.columns[column_index].title.clone();
         self.quick_add_states.remove(&column_title);
@@ -433,7 +452,8 @@ impl KanbanView {
     }
 
     pub fn get_visible_tasks(&self) -> Vec<&Task> {
-        self.tasks.iter()
+        self.tasks
+            .iter()
             .filter(|task| self.matches_filter(task))
             .collect()
     }
@@ -442,30 +462,35 @@ impl KanbanView {
         if self.search_filter.is_empty() {
             return true;
         }
-        
-        task.title.to_lowercase().contains(&self.search_filter) ||
-        task.description.to_lowercase().contains(&self.search_filter)
+
+        task.title.to_lowercase().contains(&self.search_filter)
+            || task
+                .description
+                .to_lowercase()
+                .contains(&self.search_filter)
     }
 
     // Layout calculations
     pub fn calculate_column_width(&self, available_width: f32) -> f32 {
-        let visible_columns = self.columns.iter()
+        let visible_columns = self
+            .columns
+            .iter()
             .filter(|col| col.visible && !col.collapsed)
             .count();
-        
+
         if visible_columns == 0 {
             return 300.0;
         }
-        
+
         // For standard desktop screens (>1000px), aim for comfortable column widths
         // For narrower screens, compress as needed
         let spacing = 16.0;
         let total_spacing = spacing * 2.0; // Left and right padding
         let column_spacing = spacing * (visible_columns - 1) as f32; // Between columns
-        
+
         let available_for_columns = available_width - total_spacing - column_spacing;
         let calculated_width = available_for_columns / visible_columns as f32;
-        
+
         // For wide screens with few columns, don't make them too wide
         // For narrow screens or many columns, ensure minimum usability
         if available_width >= 1000.0 && visible_columns <= 4 {
@@ -481,11 +506,15 @@ impl KanbanView {
         let base_height = 80.0;
         let extra_per_subtask = 20.0;
         let extra_for_tags = if !task.tags.is_empty() { 25.0 } else { 0.0 };
-        let extra_for_description = if !task.description.is_empty() { 20.0 } else { 0.0 };
+        let extra_for_description = if !task.description.is_empty() {
+            20.0
+        } else {
+            0.0
+        };
         let max_height = 200.0;
-        
+
         let subtask_height = task.subtasks.len() as f32 * extra_per_subtask;
-        
+
         (base_height + subtask_height + extra_for_tags + extra_for_description).min(max_height)
     }
 
@@ -496,27 +525,27 @@ impl KanbanView {
     pub fn update_layout(&mut self, viewport_width: f32) {
         self.update_layout_with_height(viewport_width, 800.0)
     }
-    
+
     pub fn update_layout_with_height(&mut self, viewport_width: f32, viewport_height: f32) {
         self.viewport_width = viewport_width;
-        
+
         let column_width = self.calculate_column_width(viewport_width);
         let spacing = 16.0;
         let mut x_offset = spacing;
-        
+
         for column in self.columns.iter_mut() {
             if column.visible && !column.collapsed {
                 column.width = column_width;
                 column.bounds = Rect::from_min_size(
                     Pos2::new(x_offset, 100.0),
-                    Vec2::new(column_width, viewport_height.max(600.0))
+                    Vec2::new(column_width, viewport_height.max(600.0)),
                 );
                 x_offset += column_width + spacing;
             } else if column.collapsed {
                 column.width = 50.0;
                 column.bounds = Rect::from_min_size(
                     Pos2::new(x_offset, 100.0),
-                    Vec2::new(50.0, viewport_height.max(600.0))
+                    Vec2::new(50.0, viewport_height.max(600.0)),
                 );
                 x_offset += 50.0 + spacing;
             }
@@ -547,22 +576,22 @@ impl KanbanView {
             match key {
                 egui::Key::ArrowRight if !modifiers.any() => {
                     // Move task to next column
-                    if let Some((col_idx, _)) = self.find_task_position(task_id) {
-                        if col_idx + 1 < self.columns.len() {
-                            // Simulate a drag and drop operation
-                            self.start_drag(task_id, Pos2::ZERO);
-                            self.complete_drag(col_idx + 1);
-                        }
+                    if let Some((col_idx, _)) = self.find_task_position(task_id)
+                        && col_idx + 1 < self.columns.len()
+                    {
+                        // Simulate a drag and drop operation
+                        self.start_drag(task_id, Pos2::ZERO);
+                        self.complete_drag(col_idx + 1);
                     }
                 }
                 egui::Key::ArrowLeft if !modifiers.any() => {
                     // Move task to previous column
-                    if let Some((col_idx, _)) = self.find_task_position(task_id) {
-                        if col_idx > 0 {
-                            // Simulate a drag and drop operation
-                            self.start_drag(task_id, Pos2::ZERO);
-                            self.complete_drag(col_idx - 1);
-                        }
+                    if let Some((col_idx, _)) = self.find_task_position(task_id)
+                        && col_idx > 0
+                    {
+                        // Simulate a drag and drop operation
+                        self.start_drag(task_id, Pos2::ZERO);
+                        self.complete_drag(col_idx - 1);
                     }
                 }
                 _ => {}
@@ -577,7 +606,7 @@ impl KanbanView {
                 return Some((col_idx, task_idx));
             }
         }
-        
+
         // If not in column task lists, find by status
         if let Some(task) = self.tasks.iter().find(|t| t.id == task_id) {
             for (col_idx, column) in self.columns.iter().enumerate() {
@@ -586,22 +615,21 @@ impl KanbanView {
                 }
             }
         }
-        
+
         None
     }
 
     // Main render method
     pub fn show(&mut self, ui: &mut Ui, tasks: &mut Vec<Task>) {
         self.tasks = tasks.clone();
-        
+
         // Sync task positions if columns are empty (initial load)
         for task in &self.tasks {
-            let task_in_column = self.columns.iter()
-                .any(|col| col.tasks.contains(&task.id));
-            
+            let task_in_column = self.columns.iter().any(|col| col.tasks.contains(&task.id));
+
             if !task_in_column {
                 // Find the appropriate column for this task based on its status
-                for (idx, column) in self.columns.iter_mut().enumerate() {
+                for column in self.columns.iter_mut() {
                     if column.status == task.status {
                         column.tasks.push(task.id);
                         break;
@@ -609,98 +637,98 @@ impl KanbanView {
                 }
             }
         }
-        
+
         // Update layout based on available width and height
         let available_width = ui.available_width();
         let available_height = ui.available_height();
         self.update_layout_with_height(available_width, available_height);
-        
+
         // Clone columns for iteration to avoid borrow issues
-        let columns_for_render = self.columns.clone();
-        
+        let _columns_for_render = self.columns.clone();
+
         // Header with search
         ui.horizontal(|ui| {
             ui.heading("📋 Kanban Board");
-            
+
             ui.separator();
-            
+
             ui.label("🔍");
             let search_response = ui.text_edit_singleline(&mut self.search_filter);
             if search_response.changed() {
                 // Filter is applied automatically via matches_filter
             }
-            
+
             ui.separator();
-            
+
             if ui.button("➕ Add Column").clicked() {
                 // TODO: Add custom column
             }
         });
-        
+
         ui.separator();
-        
+
         // Kanban board - use full available height
         let available_height = ui.available_height();
         ScrollArea::horizontal()
             .id_source("kanban_main_horizontal_scroll")
             .show(ui, |ui| {
-            ui.horizontal_top(|ui| {
-                ui.set_min_height(available_height);
-                let columns_clone = self.columns.clone();
-                for (col_idx, column) in columns_clone.iter().enumerate() {
-                    if !column.visible {
-                        continue;
+                ui.horizontal_top(|ui| {
+                    ui.set_min_height(available_height);
+                    let columns_clone = self.columns.clone();
+                    for (col_idx, column) in columns_clone.iter().enumerate() {
+                        if !column.visible {
+                            continue;
+                        }
+
+                        let column_rect = Rect::from_min_size(
+                            ui.cursor().min,
+                            Vec2::new(
+                                if column.collapsed { 50.0 } else { column.width },
+                                ui.available_height(),
+                            ),
+                        );
+
+                        // Update column bounds for drag detection
+                        self.columns[col_idx].bounds = column_rect;
+
+                        // Draw column
+                        ui.allocate_ui_at_rect(column_rect, |ui| {
+                            self.render_column(ui, col_idx);
+                        });
+
+                        ui.add_space(8.0);
                     }
-                    
-                    let column_rect = Rect::from_min_size(
-                        ui.cursor().min,
-                        Vec2::new(
-                            if column.collapsed { 50.0 } else { column.width },
-                            ui.available_height()
-                        )
-                    );
-                    
-                    // Update column bounds for drag detection
-                    self.columns[col_idx].bounds = column_rect;
-                    
-                    // Draw column
-                    ui.allocate_ui_at_rect(column_rect, |ui| {
-                        self.render_column(ui, col_idx);
-                    });
-                    
-                    ui.add_space(8.0);
-                }
+                });
             });
-        });
-        
+
         // Handle drag visual
-        if let Some(ctx) = &self.drag_context {
-            if let Some(task) = self.tasks.iter().find(|t| t.id == ctx.task_id) {
-                ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
-                
-                // Draw dragged card at cursor
-                let painter = ui.painter();
-                let card_rect = Rect::from_min_size(
-                    ctx.current_position - Vec2::new(100.0, 20.0),
-                    Vec2::new(200.0, 80.0)
-                );
-                
-                painter.rect_filled(
-                    card_rect,
-                    Rounding::same(4.0),
-                    Color32::from_rgba_unmultiplied(255, 255, 255, 200)
-                );
-                
-                painter.text(
-                    card_rect.center(),
-                    Align2::CENTER_CENTER,
-                    &task.title,
-                    egui::FontId::default(),
-                    Color32::BLACK
-                );
-            }
+        if let Some(ctx) = &self.drag_context
+            && let Some(task) = self.tasks.iter().find(|t| t.id == ctx.task_id)
+        {
+            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+
+            // Draw dragged card at cursor
+            let painter = ui.painter();
+            let card_rect = Rect::from_min_size(
+                ctx.current_position - Vec2::new(100.0, 20.0),
+                Vec2::new(200.0, 80.0),
+            );
+
+            painter.rect_filled(
+                card_rect,
+                Rounding::same(4.0),
+                Color32::from_rgba_unmultiplied(255, 255, 255, 200),
+            );
+
+            painter.text(
+                card_rect.center(),
+                Align2::CENTER_CENTER,
+                &task.title,
+                egui::FontId::default(),
+                Color32::BLACK,
+            );
         }
-        
+
         // Update tasks back
         *tasks = self.tasks.clone();
     }
@@ -712,25 +740,29 @@ impl KanbanView {
         let column_title = self.columns[column_index].title.clone();
         let column_wip_limit = self.columns[column_index].wip_limit;
         let column_width = self.columns[column_index].width;
-        
-        let tasks: Vec<Task> = self.get_tasks_for_column(column_index)
+
+        let tasks: Vec<Task> = self
+            .get_tasks_for_column(column_index)
             .into_iter()
             .cloned()
             .collect();
         let is_over_limit = self.is_column_over_wip_limit(column_index);
         let task_count = tasks.len();
-        
+
         ui.vertical(|ui| {
             // Column header
             ui.horizontal(|ui| {
-                if ui.small_button(if column_collapsed { "▶" } else { "▼" }).clicked() {
+                if ui
+                    .small_button(if column_collapsed { "▶" } else { "▼" })
+                    .clicked()
+                {
                     self.toggle_column_collapse(column_index);
                 }
-                
+
                 if !column_collapsed {
                     ui.colored_label(column_color, &column_title);
                     ui.label(format!("({})", task_count));
-                    
+
                     if let Some(limit) = column_wip_limit {
                         let color = if is_over_limit {
                             Color32::RED
@@ -739,16 +771,16 @@ impl KanbanView {
                         };
                         ui.colored_label(color, format!("[WIP: {}]", limit));
                     }
-                    
+
                     if ui.small_button("➕").clicked() {
                         self.enable_quick_add(column_index);
                     }
                 }
             });
-            
+
             if !column_collapsed {
                 ui.separator();
-                
+
                 // Use most of the available height for the scroll area
                 let scroll_height = ui.available_height() - 50.0; // Leave some space for header
                 ScrollArea::vertical()
@@ -759,18 +791,18 @@ impl KanbanView {
                         if self.is_dragging() {
                             let response = ui.allocate_response(
                                 Vec2::new(column_width - 10.0, 10.0),
-                                Sense::hover()
+                                Sense::hover(),
                             );
-                            
+
                             if response.hovered() {
                                 ui.painter().rect_filled(
                                     response.rect,
                                     Rounding::same(4.0),
-                                    Color32::from_rgba_premultiplied(100, 150, 255, 50)
+                                    Color32::from_rgba_premultiplied(100, 150, 255, 50),
                                 );
                             }
                         }
-                        
+
                         // Render tasks
                         if tasks.is_empty() {
                             ui.centered_and_justified(|ui| {
@@ -782,7 +814,7 @@ impl KanbanView {
                                 ui.add_space(self.get_card_spacing());
                             }
                         }
-                        
+
                         // Quick add form
                         if self.is_quick_add_active(column_index) {
                             self.render_quick_add_form(ui, column_index, &column_title);
@@ -798,31 +830,34 @@ impl KanbanView {
             if let Some(state) = self.quick_add_states.get(column_title) {
                 text = state.text.clone();
             }
-            
+
             let response = ui.text_edit_singleline(&mut text);
-            
+
             let mut should_add = false;
             let mut should_cancel = false;
-            
-            if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !text.is_empty() {
+
+            if response.lost_focus()
+                && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                && !text.is_empty()
+            {
                 should_add = true;
             }
-            
+
             if response.changed() {
                 // Update the text in the state
                 if let Some(state) = self.quick_add_states.get_mut(column_title) {
                     state.text = text.clone();
                 }
             }
-            
+
             if ui.small_button("✓").clicked() && !text.is_empty() {
                 should_add = true;
             }
-            
+
             if ui.small_button("✗").clicked() {
                 should_cancel = true;
             }
-            
+
             // Apply actions after UI interaction
             if should_add {
                 self.quick_add_task(column_index, text);
@@ -836,7 +871,7 @@ impl KanbanView {
     fn render_task_card(&mut self, ui: &mut Ui, task: &Task, column_index: usize) {
         let is_selected = self.selected_task_id == Some(task.id);
         let is_overdue = self.should_highlight_as_overdue(task);
-        
+
         let card_color = if is_selected {
             Color32::from_rgb(200, 220, 255)
         } else if is_overdue {
@@ -844,43 +879,51 @@ impl KanbanView {
         } else {
             Color32::from_rgb(250, 250, 250)
         };
-        
+
         let response = ui.allocate_response(
-            Vec2::new(self.columns[column_index].width - 20.0, self.calculate_card_height(task)),
-            Sense::click_and_drag()
+            Vec2::new(
+                self.columns[column_index].width - 20.0,
+                self.calculate_card_height(task),
+            ),
+            Sense::click_and_drag(),
         );
-        
+
         // Handle interactions
         if response.clicked() {
             self.select_task(task.id);
         }
-        
+
         if response.drag_started() {
-            self.start_drag(task.id, response.interact_pointer_pos().unwrap_or(Pos2::ZERO));
+            self.start_drag(
+                task.id,
+                response.interact_pointer_pos().unwrap_or(Pos2::ZERO),
+            );
         }
-        
-        if self.is_dragging() {
-            if let Some(pos) = ui.ctx().pointer_interact_pos() {
-                self.update_drag_position(pos);
-            }
+
+        if self.is_dragging()
+            && let Some(pos) = ui.ctx().pointer_interact_pos()
+        {
+            self.update_drag_position(pos);
         }
-        
-        if response.drag_released() && self.is_dragging() {
-            if let Some(target_col) = self.get_column_at_position(response.interact_pointer_pos().unwrap_or(Pos2::ZERO)) {
+
+        if response.drag_stopped() && self.is_dragging() {
+            if let Some(target_col) =
+                self.get_column_at_position(response.interact_pointer_pos().unwrap_or(Pos2::ZERO))
+            {
                 self.complete_drag(target_col);
             } else {
                 self.cancel_drag();
             }
         }
-        
+
         // Draw card
         ui.painter().rect(
             response.rect,
             Rounding::same(4.0),
             card_color,
-            egui::Stroke::new(1.0, Color32::GRAY)
+            egui::Stroke::new(1.0, Color32::GRAY),
         );
-        
+
         // Card content
         ui.allocate_ui_at_rect(response.rect.shrink(8.0), |ui| {
             ui.vertical(|ui| {
@@ -891,26 +934,26 @@ impl KanbanView {
                     Priority::Medium => Color32::from_rgb(255, 200, 0),
                     Priority::Low => Color32::GRAY,
                 };
-                
+
                 ui.horizontal(|ui| {
                     ui.painter().circle_filled(
                         ui.cursor().min + Vec2::new(5.0, 10.0),
                         3.0,
-                        priority_color
+                        priority_color,
                     );
                     ui.add_space(10.0);
                     ui.label(&task.title);
                 });
-                
+
                 if !task.description.is_empty() {
                     ui.add_space(4.0);
                     ui.label(
                         egui::RichText::new(&task.description)
                             .small()
-                            .color(Color32::GRAY)
+                            .color(Color32::GRAY),
                     );
                 }
-                
+
                 // Tags and metadata
                 if !task.tags.is_empty() {
                     ui.add_space(4.0);
@@ -919,12 +962,12 @@ impl KanbanView {
                             ui.label(
                                 egui::RichText::new(format!("#{}", tag))
                                     .small()
-                                    .color(Color32::from_rgb(100, 150, 200))
+                                    .color(Color32::from_rgb(100, 150, 200)),
                             );
                         }
                     });
                 }
-                
+
                 // Due date
                 if let Some(due) = task.due_date {
                     ui.add_space(4.0);
@@ -936,20 +979,17 @@ impl KanbanView {
                     } else {
                         Color32::GRAY
                     };
-                    
-                    ui.colored_label(
-                        date_color,
-                        format!("📅 {}", due.format("%b %d"))
-                    );
+
+                    ui.colored_label(date_color, format!("📅 {}", due.format("%b %d")));
                 }
-                
+
                 // Subtask progress
                 if !task.subtasks.is_empty() {
                     ui.add_space(4.0);
                     let (completed, total) = task.subtask_progress();
                     ui.add(
                         egui::ProgressBar::new(completed as f32 / total as f32)
-                            .text(format!("{}/{}", completed, total))
+                            .text(format!("{}/{}", completed, total)),
                     );
                 }
             });

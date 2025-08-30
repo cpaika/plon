@@ -1,6 +1,6 @@
 use crate::domain::goal::{Goal, GoalStatus};
 use chrono::Utc;
-use eframe::egui::{self, Ui, ScrollArea, Color32, RichText};
+use eframe::egui::{self, Color32, RichText, ScrollArea, Ui};
 use uuid::Uuid;
 
 pub struct GoalView {
@@ -70,9 +70,9 @@ impl GoalView {
             if ui.button("➕ New Goal").clicked() {
                 self.show_create_form = !self.show_create_form;
             }
-            
+
             ui.separator();
-            
+
             // Search bar
             ui.label("🔍");
             if ui.text_edit_singleline(&mut self.search_query).changed() {
@@ -83,19 +83,34 @@ impl GoalView {
 
             // Filter buttons
             ui.label("Filter:");
-            if ui.selectable_label(self.filter == GoalFilter::All, "All").clicked() {
+            if ui
+                .selectable_label(self.filter == GoalFilter::All, "All")
+                .clicked()
+            {
                 self.filter = GoalFilter::All;
             }
-            if ui.selectable_label(self.filter == GoalFilter::Active, "Active").clicked() {
+            if ui
+                .selectable_label(self.filter == GoalFilter::Active, "Active")
+                .clicked()
+            {
                 self.filter = GoalFilter::Active;
             }
-            if ui.selectable_label(self.filter == GoalFilter::NotStarted, "Not Started").clicked() {
+            if ui
+                .selectable_label(self.filter == GoalFilter::NotStarted, "Not Started")
+                .clicked()
+            {
                 self.filter = GoalFilter::NotStarted;
             }
-            if ui.selectable_label(self.filter == GoalFilter::AtRisk, "At Risk").clicked() {
+            if ui
+                .selectable_label(self.filter == GoalFilter::AtRisk, "At Risk")
+                .clicked()
+            {
                 self.filter = GoalFilter::AtRisk;
             }
-            if ui.selectable_label(self.filter == GoalFilter::Completed, "Completed").clicked() {
+            if ui
+                .selectable_label(self.filter == GoalFilter::Completed, "Completed")
+                .clicked()
+            {
                 self.filter = GoalFilter::Completed;
             }
 
@@ -110,40 +125,46 @@ impl GoalView {
         if self.show_create_form {
             ui.group(|ui| {
                 ui.heading("Create New Goal");
-            ui.horizontal(|ui| {
-                ui.label("Title:");
-                ui.text_edit_singleline(&mut self.new_goal_title);
-            });
+                ui.horizontal(|ui| {
+                    ui.label("Title:");
+                    ui.text_edit_singleline(&mut self.new_goal_title);
+                });
 
-            ui.horizontal(|ui| {
-                ui.label("Description:");
-                ui.text_edit_multiline(&mut self.new_goal_description);
-            });
+                ui.horizontal(|ui| {
+                    ui.label("Description:");
+                    ui.text_edit_multiline(&mut self.new_goal_description);
+                });
 
-            // Parent goal selector
-            ui.horizontal(|ui| {
-                ui.label("Parent Goal:");
-                egui::ComboBox::from_label("")
-                    .selected_text(
-                        self.selected_parent_id
-                            .and_then(|id| goals.iter().find(|g| g.id == id))
-                            .map(|g| g.title.clone())
-                            .unwrap_or_else(|| "None".to_string())
-                    )
-                    .show_ui(ui, |ui| {
-                        if ui.selectable_label(self.selected_parent_id.is_none(), "None").clicked() {
-                            self.selected_parent_id = None;
-                        }
-                        for goal in goals.iter() {
-                            if ui.selectable_label(
-                                self.selected_parent_id == Some(goal.id),
-                                &goal.title
-                            ).clicked() {
-                                self.selected_parent_id = Some(goal.id);
+                // Parent goal selector
+                ui.horizontal(|ui| {
+                    ui.label("Parent Goal:");
+                    egui::ComboBox::from_label("")
+                        .selected_text(
+                            self.selected_parent_id
+                                .and_then(|id| goals.iter().find(|g| g.id == id))
+                                .map(|g| g.title.clone())
+                                .unwrap_or_else(|| "None".to_string()),
+                        )
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_label(self.selected_parent_id.is_none(), "None")
+                                .clicked()
+                            {
+                                self.selected_parent_id = None;
                             }
-                        }
-                    });
-            });
+                            for goal in goals.iter() {
+                                if ui
+                                    .selectable_label(
+                                        self.selected_parent_id == Some(goal.id),
+                                        &goal.title,
+                                    )
+                                    .clicked()
+                                {
+                                    self.selected_parent_id = Some(goal.id);
+                                }
+                            }
+                        });
+                });
 
                 ui.horizontal(|ui| {
                     if ui.button("✅ Create Goal").clicked() && self.is_form_valid() {
@@ -169,7 +190,7 @@ impl GoalView {
         // Goals list
         ScrollArea::vertical().show(ui, |ui| {
             let filtered_goals = self.filter_goals(goals);
-            
+
             if filtered_goals.is_empty() {
                 ui.label("No goals match the current filter");
             } else {
@@ -183,12 +204,15 @@ impl GoalView {
     }
 
     fn filter_goals<'a>(&self, goals: &'a [Goal]) -> Vec<&'a Goal> {
-        goals.iter()
+        goals
+            .iter()
             .filter(|goal| {
                 // Filter by status
                 let status_match = match self.filter {
                     GoalFilter::All => true,
-                    GoalFilter::Active => goal.status == GoalStatus::Active || goal.status == GoalStatus::InProgress,
+                    GoalFilter::Active => {
+                        goal.status == GoalStatus::Active || goal.status == GoalStatus::InProgress
+                    }
                     GoalFilter::NotStarted => goal.status == GoalStatus::NotStarted,
                     GoalFilter::AtRisk => goal.status == GoalStatus::AtRisk,
                     GoalFilter::Completed => goal.status == GoalStatus::Completed,
@@ -198,16 +222,28 @@ impl GoalView {
                 let archived_match = self.show_archived || goal.status != GoalStatus::Cancelled;
 
                 // Filter by search query
-                let search_match = self.search_query.is_empty() || 
-                    goal.title.to_lowercase().contains(&self.search_query.to_lowercase()) ||
-                    goal.description.to_lowercase().contains(&self.search_query.to_lowercase());
+                let search_match = self.search_query.is_empty()
+                    || goal
+                        .title
+                        .to_lowercase()
+                        .contains(&self.search_query.to_lowercase())
+                    || goal
+                        .description
+                        .to_lowercase()
+                        .contains(&self.search_query.to_lowercase());
 
                 status_match && archived_match && search_match
             })
             .collect()
     }
 
-    fn show_goal_card(&mut self, ui: &mut Ui, goal: &Goal, all_goals: &[Goal], action: &mut Option<GoalAction>) {
+    fn show_goal_card(
+        &mut self,
+        ui: &mut Ui,
+        goal: &Goal,
+        all_goals: &[Goal],
+        action: &mut Option<GoalAction>,
+    ) {
         let is_selected = self.selected_goal_id == Some(goal.id);
         let is_editing = self.editing_goal_id == Some(goal.id);
 
@@ -217,7 +253,9 @@ impl GoalView {
                 // Status icon
                 let (status_icon, status_color) = match goal.status {
                     GoalStatus::NotStarted => ("⭕", Color32::GRAY),
-                    GoalStatus::Active | GoalStatus::InProgress => ("🔄", Color32::from_rgb(33, 150, 243)),
+                    GoalStatus::Active | GoalStatus::InProgress => {
+                        ("🔄", Color32::from_rgb(33, 150, 243))
+                    }
                     GoalStatus::OnHold => ("⏸", Color32::from_rgb(255, 193, 7)),
                     GoalStatus::AtRisk => ("⚠️", Color32::from_rgb(255, 87, 34)),
                     GoalStatus::Completed => ("✅", Color32::from_rgb(76, 175, 80)),
@@ -241,8 +279,10 @@ impl GoalView {
 
                 // Progress bar
                 ui.add_space(10.0);
-                ui.add(egui::ProgressBar::new(goal.progress / 100.0)
-                    .text(format!("{:.0}%", goal.progress)));
+                ui.add(
+                    egui::ProgressBar::new(goal.progress / 100.0)
+                        .text(format!("{:.0}%", goal.progress)),
+                );
             });
 
             // Description (editable if in edit mode)
@@ -264,7 +304,7 @@ impl GoalView {
                     } else {
                         format!("📅 {} days remaining", days_until)
                     };
-                    
+
                     let color = if days_until < 0 {
                         Color32::RED
                     } else if days_until <= 7 {
@@ -272,15 +312,15 @@ impl GoalView {
                     } else {
                         ui.visuals().text_color()
                     };
-                    
+
                     ui.colored_label(color, date_text);
                 }
 
                 // Parent goal
-                if let Some(parent_id) = goal.parent_goal_id {
-                    if let Some(parent) = all_goals.iter().find(|g| g.id == parent_id) {
-                        ui.label(format!("📁 {}", parent.title));
-                    }
+                if let Some(parent_id) = goal.parent_goal_id
+                    && let Some(parent) = all_goals.iter().find(|g| g.id == parent_id)
+                {
+                    ui.label(format!("📁 {}", parent.title));
                 }
 
                 // Estimated hours

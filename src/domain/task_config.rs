@@ -41,10 +41,17 @@ pub struct StateTransition {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransitionCondition {
-    RequireMetadataField { field: String, value: Option<String> },
-    RequireApproval { role: String },
+    RequireMetadataField {
+        field: String,
+        value: Option<String>,
+    },
+    RequireApproval {
+        role: String,
+    },
     RequireAllSubtasksComplete,
-    CustomValidation { script: String },
+    CustomValidation {
+        script: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,13 +131,15 @@ pub enum ValidationRule {
     MinValue(f64),
     MaxValue(f64),
     Regex(String),
-    DateRange { min: Option<String>, max: Option<String> },
+    DateRange {
+        min: Option<String>,
+        max: Option<String>,
+    },
     UniqueValue,
     CustomValidation(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MetadataSchema {
     pub fields: HashMap<String, MetadataFieldConfig>,
     pub field_groups: Vec<FieldGroup>,
@@ -159,7 +168,9 @@ impl TaskConfiguration {
     }
 
     pub fn add_metadata_field(&mut self, field: MetadataFieldConfig) {
-        self.metadata_schema.fields.insert(field.name.clone(), field);
+        self.metadata_schema
+            .fields
+            .insert(field.name.clone(), field);
         self.updated_at = chrono::Utc::now();
     }
 
@@ -178,7 +189,10 @@ impl TaskConfiguration {
 
         for (name, field) in &self.metadata_schema.fields {
             if field.required && !metadata.contains_key(name) {
-                errors.push(format!("Required field '{}' is missing", field.display_name));
+                errors.push(format!(
+                    "Required field '{}' is missing",
+                    field.display_name
+                ));
             }
 
             if let Some(value) = metadata.get(name) {
@@ -197,16 +211,27 @@ impl TaskConfiguration {
         }
     }
 
-    fn validate_field_rule(&self, field: &MetadataFieldConfig, value: &str, rule: &ValidationRule) -> Result<(), String> {
+    fn validate_field_rule(
+        &self,
+        field: &MetadataFieldConfig,
+        value: &str,
+        rule: &ValidationRule,
+    ) -> Result<(), String> {
         match rule {
             ValidationRule::MinLength(min) => {
                 if value.len() < *min {
-                    return Err(format!("{} must be at least {} characters", field.display_name, min));
+                    return Err(format!(
+                        "{} must be at least {} characters",
+                        field.display_name, min
+                    ));
                 }
             }
             ValidationRule::MaxLength(max) => {
                 if value.len() > *max {
-                    return Err(format!("{} must be at most {} characters", field.display_name, max));
+                    return Err(format!(
+                        "{} must be at most {} characters",
+                        field.display_name, max
+                    ));
                 }
             }
             ValidationRule::MinValue(min) => {
@@ -229,9 +254,10 @@ impl TaskConfiguration {
             }
             ValidationRule::Regex(pattern) => {
                 if let Ok(re) = regex::Regex::new(pattern)
-                    && !re.is_match(value) {
-                        return Err(format!("{} has invalid format", field.display_name));
-                    }
+                    && !re.is_match(value)
+                {
+                    return Err(format!("{} has invalid format", field.display_name));
+                }
             }
             ValidationRule::UniqueValue => {
                 // This would need to be checked against the database
@@ -242,14 +268,22 @@ impl TaskConfiguration {
     }
 
     pub fn get_available_transitions(&self, current_state: &str) -> Vec<&StateTransition> {
-        self.state_machine.transitions
+        self.state_machine
+            .transitions
             .iter()
             .filter(|t| t.from_state == current_state)
             .collect()
     }
 
-    pub fn can_transition(&self, from_state: &str, to_state: &str, context: &TransitionContext) -> Result<(), String> {
-        let transition = self.state_machine.transitions
+    pub fn can_transition(
+        &self,
+        from_state: &str,
+        to_state: &str,
+        context: &TransitionContext,
+    ) -> Result<(), String> {
+        let transition = self
+            .state_machine
+            .transitions
             .iter()
             .find(|t| t.from_state == from_state && t.to_state == to_state)
             .ok_or_else(|| format!("No transition from {} to {}", from_state, to_state))?;
@@ -261,16 +295,23 @@ impl TaskConfiguration {
         Ok(())
     }
 
-    fn check_condition(&self, condition: &TransitionCondition, context: &TransitionContext) -> Result<(), String> {
+    fn check_condition(
+        &self,
+        condition: &TransitionCondition,
+        context: &TransitionContext,
+    ) -> Result<(), String> {
         match condition {
             TransitionCondition::RequireMetadataField { field, value } => {
-                let field_value = context.metadata.get(field)
+                let field_value = context
+                    .metadata
+                    .get(field)
                     .ok_or_else(|| format!("Required field {} is missing", field))?;
-                
+
                 if let Some(expected) = value
-                    && field_value != expected {
-                        return Err(format!("Field {} must be {}", field, expected));
-                    }
+                    && field_value != expected
+                {
+                    return Err(format!("Field {} must be {}", field, expected));
+                }
             }
             TransitionCondition::RequireAllSubtasksComplete => {
                 if !context.all_subtasks_complete {
@@ -290,37 +331,45 @@ pub struct TransitionContext {
     pub user_role: Option<String>,
 }
 
-
 impl Default for StateMachine {
     fn default() -> Self {
         let mut states = HashMap::new();
-        
-        states.insert("todo".to_string(), StateDefinition {
-            name: "todo".to_string(),
-            display_name: "To Do".to_string(),
-            color: "#808080".to_string(),
-            description: "Task is waiting to be started".to_string(),
-            is_final: false,
-            auto_actions: vec![],
-        });
-        
-        states.insert("in_progress".to_string(), StateDefinition {
-            name: "in_progress".to_string(),
-            display_name: "In Progress".to_string(),
-            color: "#3b82f6".to_string(),
-            description: "Task is being worked on".to_string(),
-            is_final: false,
-            auto_actions: vec![],
-        });
-        
-        states.insert("done".to_string(), StateDefinition {
-            name: "done".to_string(),
-            display_name: "Done".to_string(),
-            color: "#10b981".to_string(),
-            description: "Task is completed".to_string(),
-            is_final: true,
-            auto_actions: vec![],
-        });
+
+        states.insert(
+            "todo".to_string(),
+            StateDefinition {
+                name: "todo".to_string(),
+                display_name: "To Do".to_string(),
+                color: "#808080".to_string(),
+                description: "Task is waiting to be started".to_string(),
+                is_final: false,
+                auto_actions: vec![],
+            },
+        );
+
+        states.insert(
+            "in_progress".to_string(),
+            StateDefinition {
+                name: "in_progress".to_string(),
+                display_name: "In Progress".to_string(),
+                color: "#3b82f6".to_string(),
+                description: "Task is being worked on".to_string(),
+                is_final: false,
+                auto_actions: vec![],
+            },
+        );
+
+        states.insert(
+            "done".to_string(),
+            StateDefinition {
+                name: "done".to_string(),
+                display_name: "Done".to_string(),
+                color: "#10b981".to_string(),
+                description: "Task is completed".to_string(),
+                is_final: true,
+                auto_actions: vec![],
+            },
+        );
 
         let transitions = vec![
             StateTransition {
@@ -364,11 +413,36 @@ pub fn create_software_development_config() -> TaskConfiguration {
         field_type: FieldType::Select,
         required: false,
         options: vec![
-            FieldOption { value: "1".to_string(), label: "1 - Trivial".to_string(), color: Some("#10b981".to_string()), icon: None },
-            FieldOption { value: "2".to_string(), label: "2 - Easy".to_string(), color: Some("#3b82f6".to_string()), icon: None },
-            FieldOption { value: "3".to_string(), label: "3 - Medium".to_string(), color: Some("#f59e0b".to_string()), icon: None },
-            FieldOption { value: "5".to_string(), label: "5 - Hard".to_string(), color: Some("#ef4444".to_string()), icon: None },
-            FieldOption { value: "8".to_string(), label: "8 - Complex".to_string(), color: Some("#dc2626".to_string()), icon: None },
+            FieldOption {
+                value: "1".to_string(),
+                label: "1 - Trivial".to_string(),
+                color: Some("#10b981".to_string()),
+                icon: None,
+            },
+            FieldOption {
+                value: "2".to_string(),
+                label: "2 - Easy".to_string(),
+                color: Some("#3b82f6".to_string()),
+                icon: None,
+            },
+            FieldOption {
+                value: "3".to_string(),
+                label: "3 - Medium".to_string(),
+                color: Some("#f59e0b".to_string()),
+                icon: None,
+            },
+            FieldOption {
+                value: "5".to_string(),
+                label: "5 - Hard".to_string(),
+                color: Some("#ef4444".to_string()),
+                icon: None,
+            },
+            FieldOption {
+                value: "8".to_string(),
+                label: "8 - Complex".to_string(),
+                color: Some("#dc2626".to_string()),
+                icon: None,
+            },
         ],
         default_value: Some("3".to_string()),
         validation_rules: vec![],
@@ -415,28 +489,27 @@ pub fn create_software_development_config() -> TaskConfiguration {
         color: "#8b5cf6".to_string(),
         description: "Task is being reviewed".to_string(),
         is_final: false,
-        auto_actions: vec![
-            AutoAction::AddTag { tag: "needs-review".to_string() },
-        ],
+        auto_actions: vec![AutoAction::AddTag {
+            tag: "needs-review".to_string(),
+        }],
     };
 
-    config.state_machine.states.insert("review".to_string(), review_state);
+    config
+        .state_machine
+        .states
+        .insert("review".to_string(), review_state);
 
     config.state_machine.transitions.push(StateTransition {
         from_state: "in_progress".to_string(),
         to_state: "review".to_string(),
         action_name: "Submit for Review".to_string(),
-        conditions: vec![
-            TransitionCondition::RequireMetadataField { 
-                field: "pr_url".to_string(), 
-                value: None 
-            },
-        ],
-        effects: vec![
-            TransitionEffect::NotifyResource { 
-                message_template: "Task '{title}' is ready for review".to_string() 
-            },
-        ],
+        conditions: vec![TransitionCondition::RequireMetadataField {
+            field: "pr_url".to_string(),
+            value: None,
+        }],
+        effects: vec![TransitionEffect::NotifyResource {
+            message_template: "Task '{title}' is ready for review".to_string(),
+        }],
     });
 
     config.state_machine.transitions.push(StateTransition {
@@ -465,15 +538,25 @@ mod tests {
     #[test]
     fn test_task_configuration() {
         let mut config = TaskConfiguration::new("Test Config".to_string());
-        
+
         let field = MetadataFieldConfig {
             name: "priority".to_string(),
             display_name: "Priority".to_string(),
             field_type: FieldType::Select,
             required: true,
             options: vec![
-                FieldOption { value: "low".to_string(), label: "Low".to_string(), color: None, icon: None },
-                FieldOption { value: "high".to_string(), label: "High".to_string(), color: None, icon: None },
+                FieldOption {
+                    value: "low".to_string(),
+                    label: "Low".to_string(),
+                    color: None,
+                    icon: None,
+                },
+                FieldOption {
+                    value: "high".to_string(),
+                    label: "High".to_string(),
+                    color: None,
+                    icon: None,
+                },
             ],
             default_value: Some("low".to_string()),
             validation_rules: vec![],
@@ -483,7 +566,7 @@ mod tests {
             sortable: true,
             searchable: false,
         };
-        
+
         config.add_metadata_field(field);
         assert_eq!(config.metadata_schema.fields.len(), 1);
     }
@@ -499,7 +582,7 @@ mod tests {
     #[test]
     fn test_metadata_validation() {
         let mut config = TaskConfiguration::new("Test".to_string());
-        
+
         config.add_metadata_field(MetadataFieldConfig {
             name: "required_field".to_string(),
             display_name: "Required Field".to_string(),

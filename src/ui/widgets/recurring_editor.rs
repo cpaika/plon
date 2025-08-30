@@ -1,7 +1,7 @@
-use eframe::egui::{self, Ui};
-use chrono::{NaiveTime, Weekday, NaiveDate, Timelike};
-use crate::domain::recurring::{RecurringTaskTemplate, RecurrenceRule, RecurrencePattern};
+use crate::domain::recurring::{RecurrencePattern, RecurrenceRule, RecurringTaskTemplate};
 use crate::domain::task::Priority;
+use chrono::{NaiveDate, NaiveTime, Timelike, Weekday};
+use eframe::egui::{self, Ui};
 
 pub struct RecurringEditor {
     pub title: String,
@@ -44,20 +44,20 @@ impl RecurringEditor {
 
     pub fn show(&mut self, ui: &mut Ui) -> bool {
         let mut should_save = false;
-        
+
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.label("Title:");
                 ui.text_edit_singleline(&mut self.title);
             });
-            
+
             ui.horizontal(|ui| {
                 ui.label("Description:");
                 ui.text_edit_multiline(&mut self.description);
             });
-            
+
             ui.separator();
-            
+
             ui.horizontal(|ui| {
                 ui.label("Pattern:");
                 egui::ComboBox::from_id_source("recurring_pattern_combo")
@@ -65,19 +65,27 @@ impl RecurringEditor {
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.pattern, RecurrencePattern::Daily, "Daily");
                         ui.selectable_value(&mut self.pattern, RecurrencePattern::Weekly, "Weekly");
-                        ui.selectable_value(&mut self.pattern, RecurrencePattern::Monthly, "Monthly");
+                        ui.selectable_value(
+                            &mut self.pattern,
+                            RecurrencePattern::Monthly,
+                            "Monthly",
+                        );
                         ui.selectable_value(&mut self.pattern, RecurrencePattern::Yearly, "Yearly");
                     });
             });
-            
+
             ui.horizontal(|ui| {
                 ui.label("Every");
                 ui.push_id("interval_drag", |ui| {
-                    ui.add(egui::DragValue::new(&mut self.interval).speed(1.0).clamp_range(1..=100));
+                    ui.add(
+                        egui::DragValue::new(&mut self.interval)
+                            .speed(1.0)
+                            .clamp_range(1..=100),
+                    );
                 });
                 ui.label(self.get_interval_label());
             });
-            
+
             // Pattern-specific options
             match self.pattern {
                 RecurrencePattern::Weekly => {
@@ -91,7 +99,11 @@ impl RecurringEditor {
                         ui.label("Day of month:");
                         let mut day = self.day_of_month.unwrap_or(1);
                         ui.push_id("monthly_day_drag", |ui| {
-                            ui.add(egui::DragValue::new(&mut day).speed(1.0).clamp_range(1..=31));
+                            ui.add(
+                                egui::DragValue::new(&mut day)
+                                    .speed(1.0)
+                                    .clamp_range(1..=31),
+                            );
                         });
                         self.day_of_month = Some(day);
                     });
@@ -108,39 +120,51 @@ impl RecurringEditor {
                                 }
                             });
                         self.month_of_year = Some(month);
-                        
+
                         ui.label("Day:");
                         let mut day = self.day_of_month.unwrap_or(1);
                         ui.push_id("yearly_day_drag", |ui| {
-                            ui.add(egui::DragValue::new(&mut day).speed(1.0).clamp_range(1..=31));
+                            ui.add(
+                                egui::DragValue::new(&mut day)
+                                    .speed(1.0)
+                                    .clamp_range(1..=31),
+                            );
                         });
                         self.day_of_month = Some(day);
                     });
                 }
                 _ => {}
             }
-            
+
             ui.separator();
-            
+
             ui.horizontal(|ui| {
                 ui.label("Time of day:");
                 let hour = self.time.hour();
                 let minute = self.time.minute();
-                
+
                 let mut hour_val = hour;
                 let mut minute_val = minute;
-                
+
                 ui.push_id("time_hour", |ui| {
-                    ui.add(egui::DragValue::new(&mut hour_val).speed(1.0).clamp_range(0..=23));
+                    ui.add(
+                        egui::DragValue::new(&mut hour_val)
+                            .speed(1.0)
+                            .clamp_range(0..=23),
+                    );
                 });
                 ui.label(":");
                 ui.push_id("time_minute", |ui| {
-                    ui.add(egui::DragValue::new(&mut minute_val).speed(1.0).clamp_range(0..=59));
+                    ui.add(
+                        egui::DragValue::new(&mut minute_val)
+                            .speed(1.0)
+                            .clamp_range(0..=59),
+                    );
                 });
-                
+
                 self.time = NaiveTime::from_hms_opt(hour_val, minute_val, 0).unwrap();
             });
-            
+
             ui.horizontal(|ui| {
                 ui.label("Priority:");
                 egui::ComboBox::from_id_source("recurring_priority_combo")
@@ -152,28 +176,36 @@ impl RecurringEditor {
                         ui.selectable_value(&mut self.priority, Priority::Low, "Low");
                     });
             });
-            
+
             ui.horizontal(|ui| {
                 ui.label("Estimated hours:");
                 if let Some(mut hours) = self.estimated_hours {
                     ui.push_id("estimated_hours_drag", |ui| {
-                        ui.add(egui::DragValue::new(&mut hours).speed(0.1).clamp_range(0.0..=100.0));
+                        ui.add(
+                            egui::DragValue::new(&mut hours)
+                                .speed(0.1)
+                                .clamp_range(0.0..=100.0),
+                        );
                     });
                     self.estimated_hours = Some(hours);
                 } else if ui.button("Set estimate").clicked() {
                     self.estimated_hours = Some(1.0);
                 }
             });
-            
+
             ui.separator();
-            
+
             ui.label("Limits (optional):");
-            
+
             ui.horizontal(|ui| {
                 if let Some(mut max) = self.max_occurrences {
                     ui.checkbox(&mut false, "Max occurrences:");
                     ui.push_id("max_occurrences_drag", |ui| {
-                        ui.add(egui::DragValue::new(&mut max).speed(1.0).clamp_range(1..=1000));
+                        ui.add(
+                            egui::DragValue::new(&mut max)
+                                .speed(1.0)
+                                .clamp_range(1..=1000),
+                        );
                     });
                     self.max_occurrences = Some(max);
                     if ui.button("Remove").clicked() {
@@ -183,24 +215,24 @@ impl RecurringEditor {
                     self.max_occurrences = Some(10);
                 }
             });
-            
+
             ui.separator();
-            
+
             ui.label(format!("Preview: {}", self.get_frequency_description()));
-            
+
             ui.separator();
-            
+
             ui.horizontal(|ui| {
                 if ui.button("Save").clicked() && self.validate() {
                     should_save = true;
                 }
-                
+
                 if ui.button("Cancel").clicked() {
                     self.reset();
                 }
             });
         });
-        
+
         should_save
     }
 
@@ -214,7 +246,7 @@ impl RecurringEditor {
             (Weekday::Sat, "Sat"),
             (Weekday::Sun, "Sun"),
         ];
-        
+
         for (day, label) in weekdays {
             let mut selected = self.selected_days.contains(&day);
             if ui.checkbox(&mut selected, label).changed() {
@@ -233,15 +265,13 @@ impl RecurringEditor {
         if self.title.is_empty() {
             return false;
         }
-        
+
         match self.pattern {
             RecurrencePattern::Weekly => !self.selected_days.is_empty(),
-            RecurrencePattern::Monthly => {
-                self.day_of_month.is_some_and(|d| (1..=31).contains(&d))
-            }
+            RecurrencePattern::Monthly => self.day_of_month.is_some_and(|d| (1..=31).contains(&d)),
             RecurrencePattern::Yearly => {
-                self.month_of_year.is_some_and(|m| (1..=12).contains(&m)) &&
-                self.day_of_month.is_some_and(|d| (1..=31).contains(&d))
+                self.month_of_year.is_some_and(|m| (1..=12).contains(&m))
+                    && self.day_of_month.is_some_and(|d| (1..=31).contains(&d))
             }
             _ => true,
         }
@@ -259,16 +289,13 @@ impl RecurringEditor {
             max_occurrences: self.max_occurrences,
             occurrences_count: 0,
         };
-        
-        let mut template = RecurringTaskTemplate::new(
-            self.title.clone(),
-            self.description.clone(),
-            rule,
-        );
-        
+
+        let mut template =
+            RecurringTaskTemplate::new(self.title.clone(), self.description.clone(), rule);
+
         template.priority = self.priority;
         template.estimated_hours = self.estimated_hours;
-        
+
         template
     }
 
@@ -288,10 +315,34 @@ impl RecurringEditor {
 
     fn get_interval_label(&self) -> &str {
         match self.pattern {
-            RecurrencePattern::Daily => if self.interval == 1 { "day" } else { "days" },
-            RecurrencePattern::Weekly => if self.interval == 1 { "week" } else { "weeks" },
-            RecurrencePattern::Monthly => if self.interval == 1 { "month" } else { "months" },
-            RecurrencePattern::Yearly => if self.interval == 1 { "year" } else { "years" },
+            RecurrencePattern::Daily => {
+                if self.interval == 1 {
+                    "day"
+                } else {
+                    "days"
+                }
+            }
+            RecurrencePattern::Weekly => {
+                if self.interval == 1 {
+                    "week"
+                } else {
+                    "weeks"
+                }
+            }
+            RecurrencePattern::Monthly => {
+                if self.interval == 1 {
+                    "month"
+                } else {
+                    "months"
+                }
+            }
+            RecurrencePattern::Yearly => {
+                if self.interval == 1 {
+                    "year"
+                } else {
+                    "years"
+                }
+            }
             RecurrencePattern::Custom => "interval",
         }
     }
@@ -306,11 +357,13 @@ impl RecurringEditor {
                 }
             }
             RecurrencePattern::Weekly => {
-                let days_str = self.selected_days.iter()
+                let days_str = self
+                    .selected_days
+                    .iter()
                     .map(|d| format!("{:?}", d).chars().take(3).collect::<String>())
                     .collect::<Vec<_>>()
                     .join(", ");
-                
+
                 if self.interval == 1 {
                     format!("Every week on {}", days_str)
                 } else {
@@ -325,7 +378,7 @@ impl RecurringEditor {
                     3 | 23 => "rd",
                     _ => "th",
                 };
-                
+
                 if self.interval == 1 {
                     format!("Every month on the {}{}", day, suffix)
                 } else {
@@ -335,11 +388,16 @@ impl RecurringEditor {
             RecurrencePattern::Yearly => {
                 let month = self.month_of_year.unwrap_or(1);
                 let day = self.day_of_month.unwrap_or(1);
-                
+
                 if self.interval == 1 {
                     format!("Every year on {} {}", self.month_name(month), day)
                 } else {
-                    format!("Every {} years on {} {}", self.interval, self.month_name(month), day)
+                    format!(
+                        "Every {} years on {} {}",
+                        self.interval,
+                        self.month_name(month),
+                        day
+                    )
                 }
             }
             RecurrencePattern::Custom => "Custom schedule".to_string(),

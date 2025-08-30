@@ -1,12 +1,14 @@
-use crate::domain::task::{Task, TaskStatus, Priority};
-use crate::ui::widgets::task_detail_modal::TaskDetailModal;
+use crate::domain::task::{Priority, Task, TaskStatus};
 use crate::repository::comment_repository::CommentRepository;
-use eframe::egui::{self, Ui, Rect, Pos2, Vec2, Color32, Rounding, Align2, Sense, CursorIcon, ScrollArea, lerp};
-use std::collections::{HashMap, HashSet};
+use crate::ui::widgets::task_detail_modal::TaskDetailModal;
 use chrono::Utc;
-use uuid::Uuid;
+use eframe::egui::{
+    self, Align2, Color32, CursorIcon, Pos2, Rect, Rounding, ScrollArea, Sense, Ui, Vec2, lerp,
+};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 pub struct KanbanView {
     pub columns: Vec<KanbanColumn>,
@@ -104,12 +106,18 @@ pub struct EmptyColumnDropIndicator {
     pub opacity: f32,
 }
 
+impl Default for KanbanView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KanbanView {
     pub fn new() -> Self {
         let spacing = 16.0;
         let column_width = 300.0;
         let x_offset = spacing;
-        
+
         let columns = vec![
             KanbanColumn {
                 id: Uuid::new_v4(),
@@ -124,7 +132,7 @@ impl KanbanView {
                 wip_limit: None,
                 bounds: Rect::from_min_size(
                     Pos2::new(x_offset, 100.0),
-                    Vec2::new(column_width, 600.0)
+                    Vec2::new(column_width, 600.0),
                 ),
                 visible: true,
                 position: 0,
@@ -142,7 +150,7 @@ impl KanbanView {
                 wip_limit: Some(3),
                 bounds: Rect::from_min_size(
                     Pos2::new(x_offset + column_width + spacing, 100.0),
-                    Vec2::new(column_width, 600.0)
+                    Vec2::new(column_width, 600.0),
                 ),
                 visible: true,
                 position: 1,
@@ -160,7 +168,7 @@ impl KanbanView {
                 wip_limit: Some(2),
                 bounds: Rect::from_min_size(
                     Pos2::new(x_offset + (column_width + spacing) * 2.0, 100.0),
-                    Vec2::new(column_width, 600.0)
+                    Vec2::new(column_width, 600.0),
                 ),
                 visible: true,
                 position: 2,
@@ -178,7 +186,7 @@ impl KanbanView {
                 wip_limit: None,
                 bounds: Rect::from_min_size(
                     Pos2::new(x_offset + (column_width + spacing) * 3.0, 100.0),
-                    Vec2::new(column_width, 600.0)
+                    Vec2::new(column_width, 600.0),
                 ),
                 visible: true,
                 position: 3,
@@ -211,7 +219,7 @@ impl KanbanView {
             enable_smooth_animations: true,
             animation_duration: Duration::from_millis(200),
         };
-        
+
         instance.update_layout(1200.0);
         instance
     }
@@ -237,57 +245,67 @@ impl KanbanView {
     pub fn update_drag_with_animation(&mut self, position: Pos2) {
         // Calculate values before borrowing drag_state
         let hover_column = self.get_column_at_position(position);
-        let hover_position = hover_column.and_then(|col_idx| {
-            self.calculate_hover_position(col_idx, position.y)
-        });
-        
+        let hover_position =
+            hover_column.and_then(|col_idx| self.calculate_hover_position(col_idx, position.y));
+
         let mut animation_info = None;
-        
+
         if let Some(state) = &mut self.drag_state {
             let old_hover = (state.hover_column, state.hover_position);
-            
+
             state.current_position = position;
             state.hover_column = hover_column;
             state.hover_position = hover_position;
-            
+
             // Store animation info to trigger after borrow ends
             let new_hover = (hover_column, hover_position);
             if old_hover != new_hover {
                 animation_info = Some((old_hover, new_hover, state.task_id));
             }
         }
-        
+
         // Trigger animation after mutable borrow of drag_state ends
         if let Some((old_hover, new_hover, task_id)) = animation_info {
             self.animate_gap_change(old_hover, new_hover, task_id);
         }
     }
 
-    fn animate_gap_change(&mut self, old_hover: (Option<usize>, Option<usize>), new_hover: (Option<usize>, Option<usize>), task_id: Uuid) {
+    fn animate_gap_change(
+        &mut self,
+        old_hover: (Option<usize>, Option<usize>),
+        new_hover: (Option<usize>, Option<usize>),
+        task_id: Uuid,
+    ) {
         // Close old gap
         if let (Some(col), Some(pos)) = old_hover {
             let key = (col, pos);
-            self.animations.gap_animations.insert(key, GapAnimation {
-                start_height: self.get_animated_gap_height(col, pos),
-                target_height: 0.0,
-                current_height: self.get_animated_gap_height(col, pos),
-                start_time: Instant::now(),
-                duration: self.animation_duration,
-            });
+            self.animations.gap_animations.insert(
+                key,
+                GapAnimation {
+                    start_height: self.get_animated_gap_height(col, pos),
+                    target_height: 0.0,
+                    current_height: self.get_animated_gap_height(col, pos),
+                    start_time: Instant::now(),
+                    duration: self.animation_duration,
+                },
+            );
         }
-        
+
         // Open new gap
         if let (Some(col), Some(pos)) = new_hover {
             let key = (col, pos);
             let task_height = self.calculate_card_height_for_task(task_id);
-            self.animations.gap_animations.insert(key, GapAnimation {
-                start_height: 0.0,
-                target_height: task_height + 8.0, // Include spacing
-                current_height: 0.0,
-                start_time: Instant::now(),
-                duration: self.animation_duration,
-            });
-            
+            self.animations.gap_animations.insert(
+                key,
+                GapAnimation {
+                    start_height: 0.0,
+                    target_height: task_height + 8.0, // Include spacing
+                    current_height: 0.0,
+                    start_time: Instant::now(),
+                    duration: self.animation_duration,
+                },
+            );
+
             // Animate cards shifting
             self.animate_cards_shift(col, pos, task_height + 8.0);
         }
@@ -297,25 +315,30 @@ impl KanbanView {
         if column >= self.columns.len() {
             return;
         }
-        
+
         let column_tasks = &self.columns[column].task_order;
-        
+
         // Animate cards below the insertion point
         for (idx, &task_id) in column_tasks.iter().enumerate() {
             if idx >= insert_pos {
-                let current_offset = self.animations.card_animations
+                let current_offset = self
+                    .animations
+                    .card_animations
                     .get(&task_id)
                     .map(|a| a.current_pos)
                     .unwrap_or(Vec2::ZERO);
-                
-                self.animations.card_animations.insert(task_id, CardAnimation {
-                    start_pos: current_offset,
-                    target_pos: Vec2::new(0.0, gap_height),
-                    current_pos: current_offset,
-                    start_time: Instant::now(),
-                    duration: self.animation_duration,
-                    is_complete: false,
-                });
+
+                self.animations.card_animations.insert(
+                    task_id,
+                    CardAnimation {
+                        start_pos: current_offset,
+                        target_pos: Vec2::new(0.0, gap_height),
+                        current_pos: current_offset,
+                        start_time: Instant::now(),
+                        duration: self.animation_duration,
+                        is_complete: false,
+                    },
+                );
             }
         }
     }
@@ -323,24 +346,27 @@ impl KanbanView {
     pub fn complete_drag_with_animation(&mut self, column_index: usize, position: usize) {
         if let Some(state) = &self.drag_state {
             let task_id = state.task_id;
-            
+
             // Create drop animation
-            self.animations.drop_animations.insert(task_id, DropAnimation {
-                start_pos: state.current_position,
-                target_pos: self.calculate_card_position(column_index, position),
-                current_pos: state.current_position,
-                start_time: Instant::now(),
-                duration: Duration::from_millis(150),
-                is_animating: true,
-            });
-            
+            self.animations.drop_animations.insert(
+                task_id,
+                DropAnimation {
+                    start_pos: state.current_position,
+                    target_pos: self.calculate_card_position(column_index, position),
+                    current_pos: state.current_position,
+                    start_time: Instant::now(),
+                    duration: Duration::from_millis(150),
+                    is_animating: true,
+                },
+            );
+
             // Update task order
             self.reorder_task(task_id, column_index, position);
-            
+
             // Clear animations
             self.clear_drag_animations();
         }
-        
+
         self.drag_state = None;
     }
 
@@ -349,29 +375,31 @@ impl KanbanView {
         for column in &mut self.columns {
             column.task_order.retain(|&id| id != task_id);
         }
-        
+
         // Insert at new position
         if target_column < self.columns.len() {
             let column = &mut self.columns[target_column];
             let insert_pos = target_position.min(column.task_order.len());
             column.task_order.insert(insert_pos, task_id);
-            
+
             // Update task status
             if let Some(task) = self.tasks.iter_mut().find(|t| t.id == task_id) {
                 task.status = column.status;
                 // Store order in metadata
-                task.metadata.insert("kanban_order".to_string(), insert_pos.to_string());
+                task.metadata
+                    .insert("kanban_order".to_string(), insert_pos.to_string());
             }
         }
     }
 
-    pub fn update_animations(&mut self, elapsed: Duration) {
+    pub fn update_animations(&mut self, _elapsed: Duration) {
         let now = Instant::now();
-        
+
         // Update gap animations
         let mut completed_gaps = Vec::new();
         for (key, animation) in &mut self.animations.gap_animations {
-            let progress = animation.start_time.elapsed().as_secs_f32() / animation.duration.as_secs_f32();
+            let progress =
+                animation.start_time.elapsed().as_secs_f32() / animation.duration.as_secs_f32();
             if progress >= 1.0 {
                 animation.current_height = animation.target_height;
                 if animation.target_height == 0.0 {
@@ -379,19 +407,23 @@ impl KanbanView {
                 }
             } else {
                 let eased_progress = ease_in_out_cubic(progress);
-                animation.current_height = lerp(animation.start_height..=animation.target_height, eased_progress);
+                animation.current_height = lerp(
+                    animation.start_height..=animation.target_height,
+                    eased_progress,
+                );
             }
         }
-        
+
         // Remove completed gap closing animations
         for key in completed_gaps {
             self.animations.gap_animations.remove(&key);
         }
-        
+
         // Update card animations
         let mut completed_cards = Vec::new();
         for (id, animation) in &mut self.animations.card_animations {
-            let progress = animation.start_time.elapsed().as_secs_f32() / animation.duration.as_secs_f32();
+            let progress =
+                animation.start_time.elapsed().as_secs_f32() / animation.duration.as_secs_f32();
             if progress >= 1.0 {
                 animation.current_pos = animation.target_pos;
                 animation.is_complete = true;
@@ -399,21 +431,28 @@ impl KanbanView {
             } else {
                 let eased_progress = ease_in_out_cubic(progress);
                 animation.current_pos = Vec2::new(
-                    lerp(animation.start_pos.x..=animation.target_pos.x, eased_progress),
-                    lerp(animation.start_pos.y..=animation.target_pos.y, eased_progress),
+                    lerp(
+                        animation.start_pos.x..=animation.target_pos.x,
+                        eased_progress,
+                    ),
+                    lerp(
+                        animation.start_pos.y..=animation.target_pos.y,
+                        eased_progress,
+                    ),
                 );
             }
         }
-        
+
         // Remove completed card animations
         for id in completed_cards {
             self.animations.card_animations.remove(&id);
         }
-        
+
         // Update drop animations
         let mut completed_drops = Vec::new();
         for (id, animation) in &mut self.animations.drop_animations {
-            let progress = animation.start_time.elapsed().as_secs_f32() / animation.duration.as_secs_f32();
+            let progress =
+                animation.start_time.elapsed().as_secs_f32() / animation.duration.as_secs_f32();
             if progress >= 1.0 {
                 animation.current_pos = animation.target_pos;
                 animation.is_animating = false;
@@ -421,23 +460,30 @@ impl KanbanView {
             } else {
                 let eased_progress = ease_in_out_cubic(progress);
                 animation.current_pos = Pos2::new(
-                    lerp(animation.start_pos.x..=animation.target_pos.x, eased_progress),
-                    lerp(animation.start_pos.y..=animation.target_pos.y, eased_progress),
+                    lerp(
+                        animation.start_pos.x..=animation.target_pos.x,
+                        eased_progress,
+                    ),
+                    lerp(
+                        animation.start_pos.y..=animation.target_pos.y,
+                        eased_progress,
+                    ),
                 );
             }
         }
-        
+
         // Remove completed drop animations
         for id in completed_drops {
             self.animations.drop_animations.remove(&id);
         }
-        
+
         self.animations.last_update = now;
     }
 
     // Helper methods for animations
     pub fn get_animated_gap_height(&self, column: usize, position: usize) -> f32 {
-        self.animations.gap_animations
+        self.animations
+            .gap_animations
             .get(&(column, position))
             .map(|a| a.current_height)
             .unwrap_or(0.0)
@@ -445,29 +491,31 @@ impl KanbanView {
 
     pub fn get_card_animation_offset(&self, _column: usize, task_idx: usize) -> Vec2 {
         // Get task ID from column
-        if let Some(column) = self.columns.get(_column) {
-            if let Some(&task_id) = column.task_order.get(task_idx) {
-                return self.animations.card_animations
-                    .get(&task_id)
-                    .map(|a| a.current_pos)
-                    .unwrap_or(Vec2::ZERO);
-            }
+        if let Some(column) = self.columns.get(_column)
+            && let Some(&task_id) = column.task_order.get(task_idx)
+        {
+            return self
+                .animations
+                .card_animations
+                .get(&task_id)
+                .map(|a| a.current_pos)
+                .unwrap_or(Vec2::ZERO);
         }
         Vec2::ZERO
     }
 
     pub fn set_hover_insert_position(&mut self, column: usize, position: usize) {
         let mut animation_info = None;
-        
+
         if let Some(state) = &mut self.drag_state {
             let old_hover = (state.hover_column, state.hover_position);
             state.hover_column = Some(column);
             state.hover_position = Some(position);
-            
+
             let new_hover = (Some(column), Some(position));
             animation_info = Some((old_hover, new_hover, state.task_id));
         }
-        
+
         if let Some((old_hover, new_hover, task_id)) = animation_info {
             self.animate_gap_change(old_hover, new_hover, task_id);
         }
@@ -475,22 +523,23 @@ impl KanbanView {
 
     pub fn clear_hover_insert_position(&mut self) {
         let mut animation_info = None;
-        
+
         if let Some(state) = &mut self.drag_state {
             let old_hover = (state.hover_column, state.hover_position);
             state.hover_column = None;
             state.hover_position = None;
-            
+
             animation_info = Some((old_hover, state.task_id));
         }
-        
+
         if let Some((old_hover, task_id)) = animation_info {
             self.animate_gap_change(old_hover, (None, None), task_id);
         }
     }
 
     pub fn get_drop_animation_state(&self, task_id: Uuid) -> DropAnimation {
-        self.animations.drop_animations
+        self.animations
+            .drop_animations
             .get(&task_id)
             .cloned()
             .unwrap_or(DropAnimation {
@@ -504,10 +553,11 @@ impl KanbanView {
     }
 
     pub fn get_card_opacity(&self, task_id: Uuid) -> f32 {
-        if let Some(state) = &self.drag_state {
-            if state.task_id == task_id && state.is_dragging_actual_card {
-                return 0.3; // Make original position semi-transparent
-            }
+        if let Some(state) = &self.drag_state
+            && state.task_id == task_id
+            && state.is_dragging_actual_card
+        {
+            return 0.3; // Make original position semi-transparent
         }
         1.0
     }
@@ -517,13 +567,14 @@ impl KanbanView {
     }
 
     pub fn get_empty_column_drop_indicator(&self, column: usize) -> EmptyColumnDropIndicator {
-        if let Some(state) = &self.drag_state {
-            if state.hover_column == Some(column) && self.columns[column].task_order.is_empty() {
-                return EmptyColumnDropIndicator {
-                    visible: true,
-                    opacity: 0.5,
-                };
-            }
+        if let Some(state) = &self.drag_state
+            && state.hover_column == Some(column)
+            && self.columns[column].task_order.is_empty()
+        {
+            return EmptyColumnDropIndicator {
+                visible: true,
+                opacity: 0.5,
+            };
         }
         EmptyColumnDropIndicator {
             visible: false,
@@ -548,10 +599,10 @@ impl KanbanView {
         if column >= self.columns.len() {
             return Pos2::ZERO;
         }
-        
+
         let column_bounds = self.columns[column].bounds;
         let y_offset = 100.0 + (position as f32 * (80.0 + 8.0)); // Card height + spacing
-        
+
         Pos2::new(column_bounds.min.x + 10.0, column_bounds.min.y + y_offset)
     }
 
@@ -563,17 +614,18 @@ impl KanbanView {
         if column >= self.columns.len() {
             return None;
         }
-        
+
         let column_bounds = self.columns[column].bounds;
         let relative_y = y - column_bounds.min.y - 100.0; // Subtract header height
         let card_height = 80.0 + 8.0; // Card height + spacing
         let position = (relative_y / card_height).floor().max(0.0) as usize;
-        
+
         Some(position.min(self.columns[column].task_order.len()))
     }
 
     fn calculate_card_height_for_task(&self, task_id: Uuid) -> f32 {
-        self.tasks.iter()
+        self.tasks
+            .iter()
             .find(|t| t.id == task_id)
             .map(|t| self.calculate_card_height(t))
             .unwrap_or(80.0)
@@ -582,7 +634,7 @@ impl KanbanView {
     fn clear_drag_animations(&mut self) {
         // Clear all gap animations
         self.animations.gap_animations.clear();
-        
+
         // Reset card animations
         self.animations.card_animations.clear();
     }
@@ -609,7 +661,7 @@ impl KanbanView {
     }
 
     pub fn complete_drag(&mut self, target_column: usize) {
-        if let Some(state) = &self.drag_state {
+        if let Some(_state) = &self.drag_state {
             let position = self.columns[target_column].task_order.len();
             self.complete_drag_with_animation(target_column, position);
         }
@@ -633,7 +685,8 @@ impl KanbanView {
     }
 
     pub fn get_column_at_position(&self, position: Pos2) -> Option<usize> {
-        self.columns.iter()
+        self.columns
+            .iter()
             .position(|col| col.bounds.contains(position))
     }
 
@@ -641,13 +694,17 @@ impl KanbanView {
         if column_index >= self.columns.len() {
             return Vec::new();
         }
-        
+
         let column = &self.columns[column_index];
-        
+
         // Use the ordered task list
-        column.task_order.iter()
+        column
+            .task_order
+            .iter()
             .filter_map(|task_id| {
-                self.tasks.iter().find(|t| t.id == *task_id && self.matches_filter(t))
+                self.tasks
+                    .iter()
+                    .find(|t| t.id == *task_id && self.matches_filter(t))
             })
             .collect()
     }
@@ -659,7 +716,8 @@ impl KanbanView {
     pub fn set_wip_limit(&mut self, column_index: usize, limit: usize) {
         if column_index < self.columns.len() {
             self.columns[column_index].wip_limit = Some(limit);
-            self.wip_limits.insert(self.columns[column_index].title.clone(), limit);
+            self.wip_limits
+                .insert(self.columns[column_index].title.clone(), limit);
         }
     }
 
@@ -667,7 +725,7 @@ impl KanbanView {
         if column_index >= self.columns.len() {
             return false;
         }
-        
+
         let column = &self.columns[column_index];
         if let Some(limit) = column.wip_limit {
             self.get_column_task_count(column_index) > limit
@@ -680,7 +738,7 @@ impl KanbanView {
         if column_index >= self.columns.len() {
             return String::new();
         }
-        
+
         match self.columns[column_index].status {
             TaskStatus::Todo => "No tasks to do yet".to_string(),
             TaskStatus::InProgress => "No tasks in progress".to_string(),
@@ -695,7 +753,8 @@ impl KanbanView {
         if column_index < self.columns.len() {
             let column = &mut self.columns[column_index];
             column.collapsed = !column.collapsed;
-            self.column_collapse_state.insert(column.title.clone(), column.collapsed);
+            self.column_collapse_state
+                .insert(column.title.clone(), column.collapsed);
         }
     }
 
@@ -713,7 +772,8 @@ impl KanbanView {
             if column.status == task.status {
                 // Add order metadata
                 let order = column.task_order.len();
-                task.metadata.insert("kanban_order".to_string(), order.to_string());
+                task.metadata
+                    .insert("kanban_order".to_string(), order.to_string());
                 column.task_order.push(task.id);
                 break;
             }
@@ -744,26 +804,27 @@ impl KanbanView {
         if target_column >= self.columns.len() {
             return;
         }
-        
+
         let target_status = self.columns[target_column].status;
-        
+
         for &task_id in &self.selected_tasks.clone() {
             // Remove from current column
             for column in &mut self.columns {
                 column.task_order.retain(|&id| id != task_id);
             }
-            
+
             // Add to target column
             self.columns[target_column].task_order.push(task_id);
-            
+
             // Update task status
             if let Some(task) = self.tasks.iter_mut().find(|t| t.id == task_id) {
                 task.status = target_status;
                 let order = self.columns[target_column].task_order.len() - 1;
-                task.metadata.insert("kanban_order".to_string(), order.to_string());
+                task.metadata
+                    .insert("kanban_order".to_string(), order.to_string());
             }
         }
-        
+
         self.clear_selection();
     }
 
@@ -771,10 +832,13 @@ impl KanbanView {
     pub fn enable_quick_add(&mut self, column_index: usize) {
         if column_index < self.columns.len() {
             let column_title = self.columns[column_index].title.clone();
-            self.quick_add_states.insert(column_title, QuickAddState {
-                visible: true,
-                text: String::new(),
-            });
+            self.quick_add_states.insert(
+                column_title,
+                QuickAddState {
+                    visible: true,
+                    text: String::new(),
+                },
+            );
         }
     }
 
@@ -782,7 +846,7 @@ impl KanbanView {
         if column_index >= self.columns.len() {
             return false;
         }
-        
+
         self.quick_add_states
             .get(&self.columns[column_index].title)
             .map(|state| state.visible)
@@ -793,16 +857,17 @@ impl KanbanView {
         if column_index >= self.columns.len() || title.trim().is_empty() {
             return;
         }
-        
+
         let mut task = Task::new(title, String::new());
         task.status = self.columns[column_index].status;
-        
+
         let order = self.columns[column_index].task_order.len();
-        task.metadata.insert("kanban_order".to_string(), order.to_string());
-        
+        task.metadata
+            .insert("kanban_order".to_string(), order.to_string());
+
         self.columns[column_index].task_order.push(task.id);
         self.tasks.push(task);
-        
+
         // Clear quick add state
         let column_title = self.columns[column_index].title.clone();
         self.quick_add_states.remove(&column_title);
@@ -814,7 +879,8 @@ impl KanbanView {
     }
 
     pub fn get_visible_tasks(&self) -> Vec<&Task> {
-        self.tasks.iter()
+        self.tasks
+            .iter()
             .filter(|task| self.matches_filter(task))
             .collect()
     }
@@ -823,28 +889,33 @@ impl KanbanView {
         if self.search_filter.is_empty() {
             return true;
         }
-        
-        task.title.to_lowercase().contains(&self.search_filter) ||
-        task.description.to_lowercase().contains(&self.search_filter)
+
+        task.title.to_lowercase().contains(&self.search_filter)
+            || task
+                .description
+                .to_lowercase()
+                .contains(&self.search_filter)
     }
 
     // Layout calculations
     pub fn calculate_column_width(&self, available_width: f32) -> f32 {
-        let visible_columns = self.columns.iter()
+        let visible_columns = self
+            .columns
+            .iter()
             .filter(|col| col.visible && !col.collapsed)
             .count();
-        
+
         if visible_columns == 0 {
             return 300.0;
         }
-        
+
         let spacing = 16.0;
         let total_spacing = spacing * 2.0;
         let column_spacing = spacing * (visible_columns - 1) as f32;
-        
+
         let available_for_columns = available_width - total_spacing - column_spacing;
         let calculated_width = available_for_columns / visible_columns as f32;
-        
+
         if available_width >= 1000.0 && visible_columns <= 4 {
             calculated_width.min(400.0).max(320.0)
         } else {
@@ -856,11 +927,15 @@ impl KanbanView {
         let base_height = 80.0;
         let extra_per_subtask = 20.0;
         let extra_for_tags = if !task.tags.is_empty() { 25.0 } else { 0.0 };
-        let extra_for_description = if !task.description.is_empty() { 20.0 } else { 0.0 };
+        let extra_for_description = if !task.description.is_empty() {
+            20.0
+        } else {
+            0.0
+        };
         let max_height = 200.0;
-        
+
         let subtask_height = task.subtasks.len() as f32 * extra_per_subtask;
-        
+
         (base_height + subtask_height + extra_for_tags + extra_for_description).min(max_height)
     }
 
@@ -871,27 +946,27 @@ impl KanbanView {
     pub fn update_layout(&mut self, viewport_width: f32) {
         self.update_layout_with_height(viewport_width, 800.0)
     }
-    
+
     pub fn update_layout_with_height(&mut self, viewport_width: f32, viewport_height: f32) {
         self.viewport_width = viewport_width;
-        
+
         let column_width = self.calculate_column_width(viewport_width);
         let spacing = 16.0;
         let mut x_offset = spacing;
-        
+
         for column in self.columns.iter_mut() {
             if column.visible && !column.collapsed {
                 column.width = column_width;
                 column.bounds = Rect::from_min_size(
                     Pos2::new(x_offset, 100.0),
-                    Vec2::new(column_width, viewport_height.max(600.0))
+                    Vec2::new(column_width, viewport_height.max(600.0)),
                 );
                 x_offset += column_width + spacing;
             } else if column.collapsed {
                 column.width = 50.0;
                 column.bounds = Rect::from_min_size(
                     Pos2::new(x_offset, 100.0),
-                    Vec2::new(50.0, viewport_height.max(600.0))
+                    Vec2::new(50.0, viewport_height.max(600.0)),
                 );
                 x_offset += 50.0 + spacing;
             }
@@ -921,31 +996,39 @@ impl KanbanView {
         if let Some(task_id) = self.selected_task_id {
             match key {
                 egui::Key::ArrowRight if !modifiers.any() => {
-                    if let Some((col_idx, pos_idx)) = self.find_task_position(task_id) {
-                        if col_idx + 1 < self.columns.len() {
-                            self.reorder_task(task_id, col_idx + 1, self.columns[col_idx + 1].task_order.len());
-                        }
+                    if let Some((col_idx, _pos_idx)) = self.find_task_position(task_id)
+                        && col_idx + 1 < self.columns.len()
+                    {
+                        self.reorder_task(
+                            task_id,
+                            col_idx + 1,
+                            self.columns[col_idx + 1].task_order.len(),
+                        );
                     }
                 }
                 egui::Key::ArrowLeft if !modifiers.any() => {
-                    if let Some((col_idx, pos_idx)) = self.find_task_position(task_id) {
-                        if col_idx > 0 {
-                            self.reorder_task(task_id, col_idx - 1, self.columns[col_idx - 1].task_order.len());
-                        }
+                    if let Some((col_idx, _pos_idx)) = self.find_task_position(task_id)
+                        && col_idx > 0
+                    {
+                        self.reorder_task(
+                            task_id,
+                            col_idx - 1,
+                            self.columns[col_idx - 1].task_order.len(),
+                        );
                     }
                 }
                 egui::Key::ArrowUp if !modifiers.any() => {
-                    if let Some((col_idx, pos_idx)) = self.find_task_position(task_id) {
-                        if pos_idx > 0 {
-                            self.reorder_task(task_id, col_idx, pos_idx - 1);
-                        }
+                    if let Some((col_idx, pos_idx)) = self.find_task_position(task_id)
+                        && pos_idx > 0
+                    {
+                        self.reorder_task(task_id, col_idx, pos_idx - 1);
                     }
                 }
                 egui::Key::ArrowDown if !modifiers.any() => {
-                    if let Some((col_idx, pos_idx)) = self.find_task_position(task_id) {
-                        if pos_idx < self.columns[col_idx].task_order.len() - 1 {
-                            self.reorder_task(task_id, col_idx, pos_idx + 1);
-                        }
+                    if let Some((col_idx, pos_idx)) = self.find_task_position(task_id)
+                        && pos_idx < self.columns[col_idx].task_order.len() - 1
+                    {
+                        self.reorder_task(task_id, col_idx, pos_idx + 1);
                     }
                 }
                 _ => {}
@@ -966,18 +1049,20 @@ impl KanbanView {
     // Main render method
     pub fn show(&mut self, ui: &mut Ui, tasks: &mut Vec<Task>) {
         self.tasks = tasks.clone();
-        
+
         // Sync task positions if needed
         let mut tasks_to_add = Vec::new();
         for task in &self.tasks {
-            let task_in_column = self.columns.iter()
+            let task_in_column = self
+                .columns
+                .iter()
                 .any(|col| col.task_order.contains(&task.id));
-            
+
             if !task_in_column {
                 tasks_to_add.push((task.id, task.status));
             }
         }
-        
+
         // Add tasks to appropriate columns
         for (task_id, status) in tasks_to_add {
             for column in self.columns.iter_mut() {
@@ -985,113 +1070,116 @@ impl KanbanView {
                     let order = column.task_order.len();
                     column.task_order.push(task_id);
                     if let Some(t) = self.tasks.iter_mut().find(|t| t.id == task_id) {
-                        t.metadata.insert("kanban_order".to_string(), order.to_string());
+                        t.metadata
+                            .insert("kanban_order".to_string(), order.to_string());
                     }
                     break;
                 }
             }
         }
-        
+
         // Update animations
         self.update_animations(self.animations.last_update.elapsed());
-        
+
         // Update layout
         let available_width = ui.available_width();
         let available_height = ui.available_height();
         self.update_layout_with_height(available_width, available_height);
-        
+
         // Header
         ui.horizontal(|ui| {
             ui.heading("📋 Kanban Board");
-            
+
             ui.separator();
-            
+
             ui.label("🔍");
             let search_response = ui.text_edit_singleline(&mut self.search_filter);
             if search_response.changed() {
                 // Filter is applied automatically
             }
         });
-        
+
         ui.separator();
-        
+
         // Kanban board
         ScrollArea::horizontal()
             .id_source("kanban_main_horizontal_scroll")
             .show(ui, |ui| {
                 ui.horizontal_top(|ui| {
                     ui.set_min_height(available_height);
-                    
+
                     for col_idx in 0..self.columns.len() {
                         if !self.columns[col_idx].visible {
                             continue;
                         }
-                        
+
                         let column_rect = Rect::from_min_size(
                             ui.cursor().min,
                             Vec2::new(
-                                if self.columns[col_idx].collapsed { 50.0 } else { self.columns[col_idx].width },
-                                ui.available_height()
-                            )
+                                if self.columns[col_idx].collapsed {
+                                    50.0
+                                } else {
+                                    self.columns[col_idx].width
+                                },
+                                ui.available_height(),
+                            ),
                         );
-                        
+
                         self.columns[col_idx].bounds = column_rect;
-                        
+
                         ui.allocate_ui_at_rect(column_rect, |ui| {
                             self.render_column(ui, col_idx);
                         });
-                        
+
                         ui.add_space(8.0);
                     }
                 });
             });
-        
+
         // Render dragged card on top
-        if let Some(state) = &self.drag_state {
-            if state.is_dragging_actual_card {
-                if let Some(task) = self.tasks.iter().find(|t| t.id == state.task_id) {
-                    ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
-                    
-                    let painter = ui.painter();
-                    let card_size = Vec2::new(
-                        self.columns.get(state.original_column)
-                            .map(|c| c.width - 20.0)
-                            .unwrap_or(280.0),
-                        self.calculate_card_height(task)
-                    );
-                    
-                    let card_rect = Rect::from_min_size(
-                        state.current_position - card_size / 2.0,
-                        card_size
-                    );
-                    
-                    // Shadow
-                    painter.rect(
-                        card_rect.translate(Vec2::new(2.0, 2.0)),
-                        Rounding::same(4.0),
-                        Color32::from_rgba_unmultiplied(0, 0, 0, 50),
-                        egui::Stroke::NONE
-                    );
-                    
-                    // Card
-                    painter.rect_filled(
-                        card_rect,
-                        Rounding::same(4.0),
-                        Color32::from_rgba_unmultiplied(250, 250, 250, 230)
-                    );
-                    
-                    // Title
-                    painter.text(
-                        card_rect.min + Vec2::new(10.0, 10.0),
-                        Align2::LEFT_TOP,
-                        &task.title,
-                        egui::FontId::default(),
-                        Color32::BLACK
-                    );
-                }
-            }
+        if let Some(state) = &self.drag_state
+            && state.is_dragging_actual_card
+            && let Some(task) = self.tasks.iter().find(|t| t.id == state.task_id)
+        {
+            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+
+            let painter = ui.painter();
+            let card_size = Vec2::new(
+                self.columns
+                    .get(state.original_column)
+                    .map(|c| c.width - 20.0)
+                    .unwrap_or(280.0),
+                self.calculate_card_height(task),
+            );
+
+            let card_rect =
+                Rect::from_min_size(state.current_position - card_size / 2.0, card_size);
+
+            // Shadow
+            painter.rect(
+                card_rect.translate(Vec2::new(2.0, 2.0)),
+                Rounding::same(4.0),
+                Color32::from_rgba_unmultiplied(0, 0, 0, 50),
+                egui::Stroke::NONE,
+            );
+
+            // Card
+            painter.rect_filled(
+                card_rect,
+                Rounding::same(4.0),
+                Color32::from_rgba_unmultiplied(250, 250, 250, 230),
+            );
+
+            // Title
+            painter.text(
+                card_rect.min + Vec2::new(10.0, 10.0),
+                Align2::LEFT_TOP,
+                &task.title,
+                egui::FontId::default(),
+                Color32::BLACK,
+            );
         }
-        
+
         // Update tasks back
         *tasks = self.tasks.clone();
     }
@@ -1101,25 +1189,29 @@ impl KanbanView {
         let column_color = self.columns[column_index].color;
         let column_title = self.columns[column_index].title.clone();
         let column_wip_limit = self.columns[column_index].wip_limit;
-        
-        let tasks: Vec<Task> = self.get_tasks_for_column(column_index)
+
+        let tasks: Vec<Task> = self
+            .get_tasks_for_column(column_index)
             .into_iter()
             .cloned()
             .collect();
         let is_over_limit = self.is_column_over_wip_limit(column_index);
         let task_count = tasks.len();
-        
+
         ui.vertical(|ui| {
             // Column header
             ui.horizontal(|ui| {
-                if ui.small_button(if column_collapsed { "▶" } else { "▼" }).clicked() {
+                if ui
+                    .small_button(if column_collapsed { "▶" } else { "▼" })
+                    .clicked()
+                {
                     self.toggle_column_collapse(column_index);
                 }
-                
+
                 if !column_collapsed {
                     ui.colored_label(column_color, &column_title);
                     ui.label(format!("({})", task_count));
-                    
+
                     if let Some(limit) = column_wip_limit {
                         let color = if is_over_limit {
                             Color32::RED
@@ -1128,16 +1220,16 @@ impl KanbanView {
                         };
                         ui.colored_label(color, format!("[WIP: {}]", limit));
                     }
-                    
+
                     if ui.small_button("➕").clicked() {
                         self.enable_quick_add(column_index);
                     }
                 }
             });
-            
+
             if !column_collapsed {
                 ui.separator();
-                
+
                 let scroll_height = ui.available_height() - 50.0;
                 ScrollArea::vertical()
                     .id_source(format!("kanban_column_scroll_{}", column_index))
@@ -1149,13 +1241,18 @@ impl KanbanView {
                             if indicator.visible {
                                 let rect = Rect::from_min_size(
                                     ui.cursor().min,
-                                    Vec2::new(self.columns[column_index].width - 20.0, 100.0)
+                                    Vec2::new(self.columns[column_index].width - 20.0, 100.0),
                                 );
                                 ui.painter().rect(
                                     rect,
                                     Rounding::same(4.0),
-                                    Color32::from_rgba_unmultiplied(100, 150, 255, (indicator.opacity * 255.0) as u8),
-                                    egui::Stroke::new(2.0, Color32::from_rgb(100, 150, 255))
+                                    Color32::from_rgba_unmultiplied(
+                                        100,
+                                        150,
+                                        255,
+                                        (indicator.opacity * 255.0) as u8,
+                                    ),
+                                    egui::Stroke::new(2.0, Color32::from_rgb(100, 150, 255)),
                                 );
                             } else {
                                 ui.centered_and_justified(|ui| {
@@ -1164,7 +1261,7 @@ impl KanbanView {
                             }
                         } else {
                             let mut cumulative_offset = 0.0;
-                            
+
                             for (idx, task) in tasks.iter().enumerate() {
                                 // Check for gap animation before this card
                                 let gap_height = self.get_animated_gap_height(column_index, idx);
@@ -1172,25 +1269,25 @@ impl KanbanView {
                                     ui.add_space(gap_height);
                                     cumulative_offset += gap_height;
                                 }
-                                
+
                                 // Apply animation offset
                                 let offset = self.get_card_animation_offset(column_index, idx);
                                 if offset.y != 0.0 {
                                     ui.add_space(offset.y - cumulative_offset);
                                     cumulative_offset = offset.y;
                                 }
-                                
+
                                 self.render_task_card(ui, task, column_index);
                                 ui.add_space(self.get_card_spacing());
                             }
-                            
+
                             // Check for gap at the end
                             let end_gap = self.get_animated_gap_height(column_index, tasks.len());
                             if end_gap > 0.0 {
                                 ui.add_space(end_gap);
                             }
                         }
-                        
+
                         // Quick add form
                         if self.is_quick_add_active(column_index) {
                             self.render_quick_add_form(ui, column_index, &column_title);
@@ -1206,30 +1303,33 @@ impl KanbanView {
             if let Some(state) = self.quick_add_states.get(column_title) {
                 text = state.text.clone();
             }
-            
+
             let response = ui.text_edit_singleline(&mut text);
-            
+
             let mut should_add = false;
             let mut should_cancel = false;
-            
-            if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !text.is_empty() {
+
+            if response.lost_focus()
+                && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                && !text.is_empty()
+            {
                 should_add = true;
             }
-            
-            if response.changed() {
-                if let Some(state) = self.quick_add_states.get_mut(column_title) {
-                    state.text = text.clone();
-                }
+
+            if response.changed()
+                && let Some(state) = self.quick_add_states.get_mut(column_title)
+            {
+                state.text = text.clone();
             }
-            
+
             if ui.small_button("✓").clicked() && !text.is_empty() {
                 should_add = true;
             }
-            
+
             if ui.small_button("✗").clicked() {
                 should_cancel = true;
             }
-            
+
             if should_add {
                 self.quick_add_task(column_index, text);
             }
@@ -1243,7 +1343,7 @@ impl KanbanView {
         let is_selected = self.selected_task_id == Some(task.id);
         let is_overdue = self.should_highlight_as_overdue(task);
         let opacity = self.get_card_opacity(task.id);
-        
+
         let base_color = if is_selected {
             Color32::from_rgb(200, 220, 255)
         } else if is_overdue {
@@ -1251,54 +1351,64 @@ impl KanbanView {
         } else {
             Color32::from_rgb(250, 250, 250)
         };
-        
+
         let card_color = Color32::from_rgba_unmultiplied(
             base_color.r(),
             base_color.g(),
             base_color.b(),
-            (base_color.a() as f32 * opacity) as u8
+            (base_color.a() as f32 * opacity) as u8,
         );
-        
+
         let response = ui.allocate_response(
-            Vec2::new(self.columns[column_index].width - 20.0, self.calculate_card_height(task)),
-            Sense::click_and_drag()
+            Vec2::new(
+                self.columns[column_index].width - 20.0,
+                self.calculate_card_height(task),
+            ),
+            Sense::click_and_drag(),
         );
-        
+
         // Handle interactions
         if response.clicked() {
             self.select_task(task.id);
         }
-        
+
         if response.drag_started() {
-            self.start_drag_with_animation(task.id, response.interact_pointer_pos().unwrap_or(Pos2::ZERO));
+            self.start_drag_with_animation(
+                task.id,
+                response.interact_pointer_pos().unwrap_or(Pos2::ZERO),
+            );
         }
-        
-        if self.is_dragging() {
-            if let Some(pos) = ui.ctx().pointer_interact_pos() {
-                self.update_drag_with_animation(pos);
-            }
+
+        if self.is_dragging()
+            && let Some(pos) = ui.ctx().pointer_interact_pos()
+        {
+            self.update_drag_with_animation(pos);
         }
-        
-        if response.drag_released() && self.is_dragging() {
-            if let Some(pos) = response.interact_pointer_pos() {
-                if let Some(target_col) = self.get_column_at_position(pos) {
-                    if let Some(hover_pos) = self.calculate_hover_position(target_col, pos.y) {
-                        self.complete_drag_with_animation(target_col, hover_pos);
-                    }
-                } else {
-                    self.cancel_drag();
+
+        if response.drag_stopped()
+            && self.is_dragging()
+            && let Some(pos) = response.interact_pointer_pos()
+        {
+            if let Some(target_col) = self.get_column_at_position(pos) {
+                if let Some(hover_pos) = self.calculate_hover_position(target_col, pos.y) {
+                    self.complete_drag_with_animation(target_col, hover_pos);
                 }
+            } else {
+                self.cancel_drag();
             }
         }
-        
+
         // Draw card
         ui.painter().rect(
             response.rect,
             Rounding::same(4.0),
             card_color,
-            egui::Stroke::new(1.0, Color32::from_rgba_unmultiplied(128, 128, 128, (opacity * 255.0) as u8))
+            egui::Stroke::new(
+                1.0,
+                Color32::from_rgba_unmultiplied(128, 128, 128, (opacity * 255.0) as u8),
+            ),
         );
-        
+
         // Card content with opacity
         ui.allocate_ui_at_rect(response.rect.shrink(8.0), |ui| {
             ui.vertical(|ui| {
@@ -1308,7 +1418,7 @@ impl KanbanView {
                     Priority::Medium => Color32::from_rgb(255, 200, 0),
                     Priority::Low => Color32::GRAY,
                 };
-                
+
                 ui.horizontal(|ui| {
                     ui.painter().circle_filled(
                         ui.cursor().min + Vec2::new(5.0, 10.0),
@@ -1317,35 +1427,36 @@ impl KanbanView {
                             priority_color.r(),
                             priority_color.g(),
                             priority_color.b(),
-                            (priority_color.a() as f32 * opacity) as u8
-                        )
+                            (priority_color.a() as f32 * opacity) as u8,
+                        ),
                     );
                     ui.add_space(10.0);
                     ui.label(&task.title);
                 });
-                
+
                 if !task.description.is_empty() {
                     ui.add_space(4.0);
-                    ui.label(
-                        egui::RichText::new(&task.description)
-                            .small()
-                            .color(Color32::from_rgba_unmultiplied(128, 128, 128, (opacity * 200.0) as u8))
-                    );
+                    ui.label(egui::RichText::new(&task.description).small().color(
+                        Color32::from_rgba_unmultiplied(128, 128, 128, (opacity * 200.0) as u8),
+                    ));
                 }
-                
+
                 if !task.tags.is_empty() {
                     ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
                         for tag in &task.tags {
-                            ui.label(
-                                egui::RichText::new(format!("#{}", tag))
-                                    .small()
-                                    .color(Color32::from_rgba_unmultiplied(100, 150, 200, (opacity * 255.0) as u8))
-                            );
+                            ui.label(egui::RichText::new(format!("#{}", tag)).small().color(
+                                Color32::from_rgba_unmultiplied(
+                                    100,
+                                    150,
+                                    200,
+                                    (opacity * 255.0) as u8,
+                                ),
+                            ));
                         }
                     });
                 }
-                
+
                 if let Some(due) = task.due_date {
                     ui.add_space(4.0);
                     let days_until = (due - Utc::now()).num_days();
@@ -1356,24 +1467,24 @@ impl KanbanView {
                     } else {
                         Color32::GRAY
                     };
-                    
+
                     ui.colored_label(
                         Color32::from_rgba_unmultiplied(
                             date_color.r(),
                             date_color.g(),
                             date_color.b(),
-                            (date_color.a() as f32 * opacity) as u8
+                            (date_color.a() as f32 * opacity) as u8,
                         ),
-                        format!("📅 {}", due.format("%b %d"))
+                        format!("📅 {}", due.format("%b %d")),
                     );
                 }
-                
+
                 if !task.subtasks.is_empty() {
                     ui.add_space(4.0);
                     let (completed, total) = task.subtask_progress();
                     ui.add(
                         egui::ProgressBar::new(completed as f32 / total as f32)
-                            .text(format!("{}/{}", completed, total))
+                            .text(format!("{}/{}", completed, total)),
                     );
                 }
             });

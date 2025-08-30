@@ -15,11 +15,11 @@ fn main() -> Result<()> {
 
     // Create a runtime for database initialization
     let rt = tokio::runtime::Runtime::new()?;
-    
+
     // Initialize database
     let pool = rt.block_on(repository::database::init_database("plon.db"))?;
     let repository = Repository::new(pool);
-    
+
     // Shutdown the initialization runtime
     drop(rt);
 

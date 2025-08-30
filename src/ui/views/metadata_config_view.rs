@@ -1,20 +1,19 @@
 use crate::domain::task_config::{
-    TaskConfiguration, MetadataFieldConfig, FieldType, FieldOption, 
-    StateDefinition
+    FieldOption, FieldType, MetadataFieldConfig, StateDefinition, TaskConfiguration,
 };
 use crate::services::TaskConfigService;
-use eframe::egui::{self, Ui, Context, Color32, RichText};
+use eframe::egui::{self, Color32, Context, RichText, Ui};
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct MetadataConfigView {
     configs: Vec<TaskConfiguration>,
     selected_config_id: Option<Uuid>,
-    
+
     show_new_config_dialog: bool,
     new_config_name: String,
     new_config_description: String,
-    
+
     show_field_editor: bool,
     editing_field: Option<MetadataFieldConfig>,
     field_name: String,
@@ -28,7 +27,7 @@ pub struct MetadataConfigView {
     field_show_in_card: bool,
     field_sortable: bool,
     field_searchable: bool,
-    
+
     show_state_editor: bool,
     editing_state: Option<StateDefinition>,
     state_name: String,
@@ -36,12 +35,12 @@ pub struct MetadataConfigView {
     state_color: String,
     state_description: String,
     state_is_final: bool,
-    
+
     show_transition_editor: bool,
     transition_from: String,
     transition_to: String,
     transition_action: String,
-    
+
     active_tab: ConfigTab,
 }
 
@@ -64,11 +63,11 @@ impl MetadataConfigView {
         Self {
             configs: Vec::new(),
             selected_config_id: None,
-            
+
             show_new_config_dialog: false,
             new_config_name: String::new(),
             new_config_description: String::new(),
-            
+
             show_field_editor: false,
             editing_field: None,
             field_name: String::new(),
@@ -82,7 +81,7 @@ impl MetadataConfigView {
             field_show_in_card: true,
             field_sortable: false,
             field_searchable: false,
-            
+
             show_state_editor: false,
             editing_state: None,
             state_name: String::new(),
@@ -90,17 +89,17 @@ impl MetadataConfigView {
             state_color: "#808080".to_string(),
             state_description: String::new(),
             state_is_final: false,
-            
+
             show_transition_editor: false,
             transition_from: String::new(),
             transition_to: String::new(),
             transition_action: String::new(),
-            
+
             active_tab: ConfigTab::Overview,
         }
     }
 
-    pub fn show(&mut self, ui: &mut Ui, service: Option<Arc<TaskConfigService>>) {
+    pub fn show(&mut self, ui: &mut Ui, _service: Option<Arc<TaskConfigService>>) {
         ui.heading("Task Metadata Configuration");
         ui.separator();
 
@@ -108,16 +107,24 @@ impl MetadataConfigView {
             if ui.button("➕ New Configuration").clicked() {
                 self.show_new_config_dialog = true;
             }
-            
+
             if ui.button("📥 Import Preset").clicked() {
                 self.active_tab = ConfigTab::Presets;
             }
-            
+
             ui.separator();
-            
+
             ui.selectable_value(&mut self.active_tab, ConfigTab::Overview, "Overview");
-            ui.selectable_value(&mut self.active_tab, ConfigTab::MetadataFields, "Metadata Fields");
-            ui.selectable_value(&mut self.active_tab, ConfigTab::StateMachine, "State Machine");
+            ui.selectable_value(
+                &mut self.active_tab,
+                ConfigTab::MetadataFields,
+                "Metadata Fields",
+            );
+            ui.selectable_value(
+                &mut self.active_tab,
+                ConfigTab::StateMachine,
+                "State Machine",
+            );
             ui.selectable_value(&mut self.active_tab, ConfigTab::Presets, "Presets");
         });
 
@@ -166,7 +173,7 @@ impl MetadataConfigView {
         egui::ScrollArea::vertical().show(ui, |ui| {
             for config in &self.configs {
                 let is_selected = self.selected_config_id == Some(config.id);
-                
+
                 if ui.selectable_label(is_selected, &config.name).clicked() {
                     self.selected_config_id = Some(config.id);
                 }
@@ -198,9 +205,12 @@ impl MetadataConfigView {
         ui.separator();
 
         ui.heading("Statistics");
-        
+
         ui.horizontal(|ui| {
-            ui.label(format!("Metadata Fields: {}", config.metadata_schema.fields.len()));
+            ui.label(format!(
+                "Metadata Fields: {}",
+                config.metadata_schema.fields.len()
+            ));
         });
 
         ui.horizontal(|ui| {
@@ -208,13 +218,16 @@ impl MetadataConfigView {
         });
 
         ui.horizontal(|ui| {
-            ui.label(format!("Transitions: {}", config.state_machine.transitions.len()));
+            ui.label(format!(
+                "Transitions: {}",
+                config.state_machine.transitions.len()
+            ));
         });
     }
 
     fn show_metadata_fields(&mut self, ui: &mut Ui, config: &TaskConfiguration) {
         ui.heading("Metadata Fields");
-        
+
         ui.horizontal(|ui| {
             if ui.button("➕ Add Field").clicked() {
                 self.show_field_editor = true;
@@ -231,18 +244,18 @@ impl MetadataConfigView {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(&field.display_name).strong());
                         ui.label(format!("({})", name));
-                        
+
                         if field.required {
                             ui.colored_label(Color32::RED, "Required");
                         }
-                        
+
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("✏️").clicked() {
                                 self.show_field_editor = true;
                                 self.editing_field = Some(field.clone());
                                 self.load_field_to_editor(field);
                             }
-                            
+
                             if ui.button("🗑️").clicked() {
                                 // TODO: Remove field
                             }
@@ -295,14 +308,14 @@ impl MetadataConfigView {
 
     fn show_state_machine(&mut self, ui: &mut Ui, config: &TaskConfiguration) {
         ui.heading("State Machine");
-        
+
         ui.horizontal(|ui| {
             if ui.button("➕ Add State").clicked() {
                 self.show_state_editor = true;
                 self.editing_state = None;
                 self.reset_state_editor();
             }
-            
+
             if ui.button("➕ Add Transition").clicked() {
                 self.show_transition_editor = true;
                 self.reset_transition_editor();
@@ -312,7 +325,7 @@ impl MetadataConfigView {
         ui.separator();
 
         ui.heading("States");
-        
+
         egui::ScrollArea::vertical()
             .max_height(200.0)
             .show(ui, |ui| {
@@ -322,28 +335,31 @@ impl MetadataConfigView {
                             let color = parse_color(&state.color);
                             ui.colored_label(color, "●");
                             ui.label(RichText::new(&state.display_name).strong());
-                            
+
                             if state.is_final {
                                 ui.colored_label(Color32::GREEN, "Final");
                             }
-                            
+
                             if name == &config.state_machine.initial_state {
                                 ui.colored_label(Color32::BLUE, "Initial");
                             }
-                            
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.button("✏️").clicked() {
-                                    self.show_state_editor = true;
-                                    self.editing_state = Some(state.clone());
-                                    self.load_state_to_editor(state);
-                                }
-                                
-                                if ui.button("🗑️").clicked() {
-                                    // TODO: Remove state
-                                }
-                            });
+
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui.button("✏️").clicked() {
+                                        self.show_state_editor = true;
+                                        self.editing_state = Some(state.clone());
+                                        self.load_state_to_editor(state);
+                                    }
+
+                                    if ui.button("🗑️").clicked() {
+                                        // TODO: Remove state
+                                    }
+                                },
+                            );
                         });
-                        
+
                         ui.label(&state.description);
                     });
                 }
@@ -351,7 +367,7 @@ impl MetadataConfigView {
 
         ui.separator();
         ui.heading("Transitions");
-        
+
         egui::ScrollArea::vertical()
             .max_height(300.0)
             .show(ui, |ui| {
@@ -362,18 +378,21 @@ impl MetadataConfigView {
                             ui.label("→");
                             ui.label(&transition.to_state);
                             ui.label(format!("[{}]", transition.action_name));
-                            
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.button("🗑️").clicked() {
-                                    // TODO: Remove transition
-                                }
-                            });
+
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui.button("🗑️").clicked() {
+                                        // TODO: Remove transition
+                                    }
+                                },
+                            );
                         });
-                        
+
                         if !transition.conditions.is_empty() {
                             ui.label(format!("Conditions: {}", transition.conditions.len()));
                         }
-                        
+
                         if !transition.effects.is_empty() {
                             ui.label(format!("Effects: {}", transition.effects.len()));
                         }
@@ -387,7 +406,7 @@ impl MetadataConfigView {
         ui.separator();
 
         ui.label("Import a preset configuration to quickly get started:");
-        
+
         ui.group(|ui| {
             ui.heading("Software Development");
             ui.label("Includes fields for story points, sprints, PR URLs, and a review state.");
@@ -406,7 +425,9 @@ impl MetadataConfigView {
 
         ui.group(|ui| {
             ui.heading("Bug Tracking");
-            ui.label("Includes severity, affected version, steps to reproduce, and triage workflow.");
+            ui.label(
+                "Includes severity, affected version, steps to reproduce, and triage workflow.",
+            );
             if ui.button("Import").clicked() {
                 // TODO: Import bug tracking preset
             }
@@ -431,12 +452,12 @@ impl MetadataConfigView {
                         ui.label("Name:");
                         ui.text_edit_singleline(&mut self.new_config_name);
                     });
-                    
+
                     ui.horizontal(|ui| {
                         ui.label("Description:");
                         ui.text_edit_multiline(&mut self.new_config_description);
                     });
-                    
+
                     ui.horizontal(|ui| {
                         if ui.button("Create").clicked() {
                             // TODO: Create new configuration
@@ -444,7 +465,7 @@ impl MetadataConfigView {
                             self.new_config_name.clear();
                             self.new_config_description.clear();
                         }
-                        
+
                         if ui.button("Cancel").clicked() {
                             self.show_new_config_dialog = false;
                             self.new_config_name.clear();
@@ -495,19 +516,47 @@ impl MetadataConfigView {
                         .selected_text(format!("{:?}", self.field_type))
                         .show_ui(ui, |ui| {
                             ui.selectable_value(&mut self.field_type, FieldType::Text, "Text");
-                            ui.selectable_value(&mut self.field_type, FieldType::LongText, "Long Text");
+                            ui.selectable_value(
+                                &mut self.field_type,
+                                FieldType::LongText,
+                                "Long Text",
+                            );
                             ui.selectable_value(&mut self.field_type, FieldType::Number, "Number");
-                            ui.selectable_value(&mut self.field_type, FieldType::Decimal, "Decimal");
+                            ui.selectable_value(
+                                &mut self.field_type,
+                                FieldType::Decimal,
+                                "Decimal",
+                            );
                             ui.selectable_value(&mut self.field_type, FieldType::Date, "Date");
-                            ui.selectable_value(&mut self.field_type, FieldType::DateTime, "Date Time");
+                            ui.selectable_value(
+                                &mut self.field_type,
+                                FieldType::DateTime,
+                                "Date Time",
+                            );
                             ui.selectable_value(&mut self.field_type, FieldType::Select, "Select");
-                            ui.selectable_value(&mut self.field_type, FieldType::MultiSelect, "Multi Select");
-                            ui.selectable_value(&mut self.field_type, FieldType::Boolean, "Boolean");
+                            ui.selectable_value(
+                                &mut self.field_type,
+                                FieldType::MultiSelect,
+                                "Multi Select",
+                            );
+                            ui.selectable_value(
+                                &mut self.field_type,
+                                FieldType::Boolean,
+                                "Boolean",
+                            );
                             ui.selectable_value(&mut self.field_type, FieldType::Url, "URL");
                             ui.selectable_value(&mut self.field_type, FieldType::Email, "Email");
                             ui.selectable_value(&mut self.field_type, FieldType::Phone, "Phone");
-                            ui.selectable_value(&mut self.field_type, FieldType::Currency, "Currency");
-                            ui.selectable_value(&mut self.field_type, FieldType::Percentage, "Percentage");
+                            ui.selectable_value(
+                                &mut self.field_type,
+                                FieldType::Currency,
+                                "Currency",
+                            );
+                            ui.selectable_value(
+                                &mut self.field_type,
+                                FieldType::Percentage,
+                                "Percentage",
+                            );
                         });
                 });
 
@@ -523,10 +572,11 @@ impl MetadataConfigView {
                     ui.text_edit_multiline(&mut self.field_help_text);
                 });
 
-                if self.field_type == FieldType::Select || self.field_type == FieldType::MultiSelect {
+                if self.field_type == FieldType::Select || self.field_type == FieldType::MultiSelect
+                {
                     ui.separator();
                     ui.label("Options:");
-                    
+
                     for i in 0..self.field_options.len() {
                         ui.horizontal(|ui| {
                             ui.text_edit_singleline(&mut self.field_options[i].value);
@@ -536,7 +586,7 @@ impl MetadataConfigView {
                             }
                         });
                     }
-                    
+
                     if ui.button("➕ Add Option").clicked() {
                         self.field_options.push(FieldOption {
                             value: String::new(),
@@ -549,26 +599,26 @@ impl MetadataConfigView {
 
                 ui.separator();
                 ui.label("Display Options:");
-                
+
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut self.field_show_in_list, "Show in List");
                     ui.checkbox(&mut self.field_show_in_card, "Show in Card");
                 });
-                
+
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut self.field_sortable, "Sortable");
                     ui.checkbox(&mut self.field_searchable, "Searchable");
                 });
 
                 ui.separator();
-                
+
                 ui.horizontal(|ui| {
                     if ui.button("Save").clicked() {
                         // TODO: Save field
                         self.show_field_editor = false;
                         self.reset_field_editor();
                     }
-                    
+
                     if ui.button("Cancel").clicked() {
                         self.show_field_editor = false;
                         self.reset_field_editor();
@@ -613,14 +663,14 @@ impl MetadataConfigView {
                 ui.checkbox(&mut self.state_is_final, "Final State");
 
                 ui.separator();
-                
+
                 ui.horizontal(|ui| {
                     if ui.button("Save").clicked() {
                         // TODO: Save state
                         self.show_state_editor = false;
                         self.reset_state_editor();
                     }
-                    
+
                     if ui.button("Cancel").clicked() {
                         self.show_state_editor = false;
                         self.reset_state_editor();
@@ -650,14 +700,14 @@ impl MetadataConfigView {
                 });
 
                 ui.separator();
-                
+
                 ui.horizontal(|ui| {
                     if ui.button("Save").clicked() {
                         // TODO: Save transition
                         self.show_transition_editor = false;
                         self.reset_transition_editor();
                     }
-                    
+
                     if ui.button("Cancel").clicked() {
                         self.show_transition_editor = false;
                         self.reset_transition_editor();
@@ -718,11 +768,13 @@ impl MetadataConfigView {
 }
 
 fn parse_color(hex: &str) -> Color32 {
-    if hex.len() == 7 && hex.starts_with('#')
+    if hex.len() == 7
+        && hex.starts_with('#')
         && let Ok(r) = u8::from_str_radix(&hex[1..3], 16)
-            && let Ok(g) = u8::from_str_radix(&hex[3..5], 16)
-                && let Ok(b) = u8::from_str_radix(&hex[5..7], 16) {
-                    return Color32::from_rgb(r, g, b);
-                }
+        && let Ok(g) = u8::from_str_radix(&hex[3..5], 16)
+        && let Ok(b) = u8::from_str_radix(&hex[5..7], 16)
+    {
+        return Color32::from_rgb(r, g, b);
+    }
     Color32::GRAY
 }

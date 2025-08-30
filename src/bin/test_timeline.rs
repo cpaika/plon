@@ -1,18 +1,16 @@
-use eframe::{egui, NativeOptions};
-use plon::ui::views::timeline_view::TimelineView;
-use plon::domain::task::Task;
+use eframe::{NativeOptions, egui};
 use plon::domain::goal::Goal;
+use plon::domain::task::Task;
+use plon::ui::views::timeline_view::TimelineView;
 
 fn main() {
     // Simple test app to observe timeline behavior
     let options = NativeOptions::default();
-    
+
     let _ = eframe::run_native(
         "Timeline Test",
         options,
-        Box::new(|_cc| {
-            Box::new(TimelineTestApp::new())
-        }),
+        Box::new(|_cc| Box::new(TimelineTestApp::new())),
     );
 }
 
@@ -33,7 +31,7 @@ impl TimelineTestApp {
                 task
             })
             .collect();
-            
+
         Self {
             timeline_view: TimelineView::new(),
             tasks,
@@ -46,14 +44,14 @@ impl TimelineTestApp {
 impl eframe::App for TimelineTestApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.frame_count += 1;
-        
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.label(format!("Frame: {}", self.frame_count));
-            
+
             // This is the critical part - does this cause auto-scrolling?
             self.timeline_view.show(ui, &self.tasks, &self.goals);
         });
-        
+
         // Only request repaint if something changed
         // If we see frame count continuously increasing without interaction,
         // something is requesting repaints

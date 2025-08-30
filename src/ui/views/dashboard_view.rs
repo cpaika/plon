@@ -1,4 +1,4 @@
-use crate::domain::{task::Task, goal::Goal, resource::Resource};
+use crate::domain::{goal::Goal, resource::Resource, task::Task};
 use eframe::egui::{self, Ui};
 
 pub struct DashboardView {}
@@ -16,27 +16,31 @@ impl DashboardView {
 
     pub fn show(&mut self, ui: &mut Ui, tasks: &[Task], goals: &[Goal], resources: &[Resource]) {
         ui.heading("Project Dashboard");
-        
+
         // Statistics
         ui.horizontal(|ui| {
             let total_tasks = tasks.len();
-            let completed_tasks = tasks.iter()
+            let completed_tasks = tasks
+                .iter()
                 .filter(|t| t.status == crate::domain::task::TaskStatus::Done)
                 .count();
-            let in_progress = tasks.iter()
+            let in_progress = tasks
+                .iter()
                 .filter(|t| t.status == crate::domain::task::TaskStatus::InProgress)
                 .count();
-            let blocked = tasks.iter()
+            let blocked = tasks
+                .iter()
                 .filter(|t| t.status == crate::domain::task::TaskStatus::Blocked)
                 .count();
-            
+
             ui.group(|ui| {
                 ui.label("Task Statistics");
                 ui.label(format!("Total: {}", total_tasks));
                 ui.label(format!("Completed: {}", completed_tasks));
                 ui.label(format!("In Progress: {}", in_progress));
                 ui.label(format!("Blocked: {}", blocked));
-                ui.label(format!("Completion: {:.1}%", 
+                ui.label(format!(
+                    "Completion: {:.1}%",
                     if total_tasks > 0 {
                         (completed_tasks as f32 / total_tasks as f32) * 100.0
                     } else {
@@ -44,24 +48,23 @@ impl DashboardView {
                     }
                 ));
             });
-            
+
             ui.separator();
-            
+
             ui.group(|ui| {
                 ui.label("Goal Statistics");
                 ui.label(format!("Total Goals: {}", goals.len()));
-                let completed_goals = goals.iter()
+                let completed_goals = goals
+                    .iter()
                     .filter(|g| g.status == crate::domain::goal::GoalStatus::Completed)
                     .count();
                 ui.label(format!("Completed: {}", completed_goals));
-                let at_risk = goals.iter()
-                    .filter(|g| g.is_at_risk())
-                    .count();
+                let at_risk = goals.iter().filter(|g| g.is_at_risk()).count();
                 ui.label(format!("At Risk: {}", at_risk));
             });
-            
+
             ui.separator();
-            
+
             ui.group(|ui| {
                 ui.label("Resource Utilization");
                 for resource in resources {
@@ -75,9 +78,9 @@ impl DashboardView {
                 }
             });
         });
-        
+
         ui.separator();
-        
+
         // Overdue tasks
         ui.label("Overdue Tasks:");
         for task in tasks {
@@ -91,9 +94,9 @@ impl DashboardView {
                 });
             }
         }
-        
+
         ui.separator();
-        
+
         // Goals at risk
         ui.label("Goals at Risk:");
         for goal in goals {

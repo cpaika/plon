@@ -1,9 +1,13 @@
-use crate::domain::{task::Task, comment::{Comment, EntityType}, resource::Resource};
+use crate::domain::{
+    comment::{Comment, EntityType},
+    resource::Resource,
+    task::Task,
+};
 use crate::repository::comment_repository::CommentRepository;
-use eframe::egui::{self, Ui, Window, ScrollArea, Vec2, Color32};
-use uuid::Uuid;
 use chrono::Utc;
+use eframe::egui::{self, Color32, ScrollArea, Ui, Vec2, Window};
 use std::sync::Arc;
+use uuid::Uuid;
 
 pub struct TaskDetailModal {
     pub visible: bool,
@@ -64,10 +68,10 @@ impl TaskDetailModal {
 
         // Clone task for display to avoid borrow issues
         let task_clone = self.task.clone();
-        
+
         if let Some(task) = task_clone {
             let window_title = format!("Task: {}", task.title);
-            
+
             Window::new(window_title)
                 .id(egui::Id::new("task_detail_modal"))
                 .default_size(Vec2::new(800.0, 600.0))
@@ -77,7 +81,14 @@ impl TaskDetailModal {
                     ScrollArea::vertical().show(ui, |ui| {
                         // Header controls
                         ui.horizontal(|ui| {
-                            if ui.button(if self.show_edit_mode { "View Mode" } else { "Edit Mode" }).clicked() {
+                            if ui
+                                .button(if self.show_edit_mode {
+                                    "View Mode"
+                                } else {
+                                    "Edit Mode"
+                                })
+                                .clicked()
+                            {
                                 self.show_edit_mode = !self.show_edit_mode;
                             }
                             ui.separator();
@@ -104,7 +115,7 @@ impl TaskDetailModal {
 
                         ui.separator();
                         ui.heading("Comments");
-                        
+
                         // Comments section
                         let mut comment_action = None;
                         show_comments_section(
@@ -114,9 +125,9 @@ impl TaskDetailModal {
                             &mut self.editing_comment_id,
                             &mut self.edit_comment_text,
                             task.id,
-                            &mut comment_action
+                            &mut comment_action,
                         );
-                        
+
                         if let Some(ca) = comment_action {
                             action = Some(ca);
                         }
@@ -137,7 +148,7 @@ fn show_task_view(ui: &mut Ui, task: &Task) {
         ui.vertical(|ui| {
             // Title
             ui.heading(&task.title);
-            
+
             // Status and Priority badges
             ui.horizontal(|ui| {
                 draw_status_badge(ui, &task.status);
@@ -193,7 +204,11 @@ fn show_task_view(ui: &mut Ui, task: &Task) {
             // Subtasks
             if !task.subtasks.is_empty() {
                 ui.add_space(8.0);
-                ui.label(format!("Subtasks ({}/{})", task.subtask_progress().0, task.subtask_progress().1));
+                ui.label(format!(
+                    "Subtasks ({}/{})",
+                    task.subtask_progress().0,
+                    task.subtask_progress().1
+                ));
                 ui.group(|ui| {
                     for subtask in &task.subtasks {
                         ui.horizontal(|ui| {
@@ -213,7 +228,7 @@ fn show_task_view(ui: &mut Ui, task: &Task) {
 
 fn show_task_editor(ui: &mut Ui, task: &mut Task, resources: &[Resource]) {
     ui.group(|ui| {
-        super::task_editor::show_task_editor(ui, task, resources);
+        super::task_editor::show_task_editor(ui, task, resources, &[], None);
     });
 }
 
@@ -224,7 +239,7 @@ fn show_comments_section(
     editing_comment_id: &mut Option<Uuid>,
     edit_comment_text: &mut String,
     task_id: Uuid,
-    action: &mut Option<TaskAction>
+    action: &mut Option<TaskAction>,
 ) {
     // Display existing comments
     for comment in comments.iter() {
@@ -269,20 +284,20 @@ fn show_comments_section(
         });
         ui.add_space(4.0);
     }
-    
+
     // Add new comment section
     ui.separator();
     ui.label("Add a comment:");
     ui.text_edit_multiline(new_comment_text);
-    
+
     if ui.button("Post Comment").clicked() && !new_comment_text.is_empty() {
         let new_comment = Comment::new(
             task_id,
             EntityType::Task,
             "Current User".to_string(),
-            new_comment_text.clone()
+            new_comment_text.clone(),
         );
-        
+
         comments.push(new_comment.clone());
         new_comment_text.clear();
         *action = Some(TaskAction::AddComment(new_comment));
@@ -292,7 +307,9 @@ fn show_comments_section(
 fn draw_status_badge(ui: &mut Ui, status: &crate::domain::task::TaskStatus) {
     let (text, color) = match status {
         crate::domain::task::TaskStatus::Todo => ("TODO", Color32::GRAY),
-        crate::domain::task::TaskStatus::InProgress => ("IN PROGRESS", Color32::from_rgb(100, 150, 255)),
+        crate::domain::task::TaskStatus::InProgress => {
+            ("IN PROGRESS", Color32::from_rgb(100, 150, 255))
+        }
         crate::domain::task::TaskStatus::Blocked => ("BLOCKED", Color32::from_rgb(255, 100, 100)),
         crate::domain::task::TaskStatus::Review => ("REVIEW", Color32::from_rgb(255, 200, 100)),
         crate::domain::task::TaskStatus::Done => ("DONE", Color32::from_rgb(100, 255, 100)),

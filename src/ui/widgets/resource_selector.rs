@@ -8,7 +8,7 @@ pub fn show_resource_selector(ui: &mut Ui, selected: &mut Option<Uuid>, resource
             selected
                 .and_then(|id| resources.iter().find(|r| r.id == id))
                 .map(|r| r.name.clone())
-                .unwrap_or_else(|| "Unassigned".to_string())
+                .unwrap_or_else(|| "Unassigned".to_string()),
         )
         .show_ui(ui, |ui| {
             ui.selectable_value(selected, None, "Unassigned");

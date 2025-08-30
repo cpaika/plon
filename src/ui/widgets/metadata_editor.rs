@@ -1,11 +1,11 @@
-use std::collections::HashMap;
 use eframe::egui::Ui;
+use std::collections::HashMap;
 
 pub fn show_metadata_editor(ui: &mut Ui, metadata: &mut HashMap<String, String>) {
     ui.label("Metadata:");
-    
+
     let mut to_remove = Vec::new();
-    
+
     for (key, value) in metadata.iter_mut() {
         ui.horizontal(|ui| {
             ui.label(key);
@@ -15,11 +15,11 @@ pub fn show_metadata_editor(ui: &mut Ui, metadata: &mut HashMap<String, String>)
             }
         });
     }
-    
+
     for key in to_remove {
         metadata.remove(&key);
     }
-    
+
     if ui.button("+ Add Metadata").clicked() {
         metadata.insert("new_key".to_string(), "value".to_string());
     }

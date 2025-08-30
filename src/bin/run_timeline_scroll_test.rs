@@ -3,8 +3,8 @@
 //! Run with: cargo run --bin run_timeline_scroll_test
 
 use std::process::Command;
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
 fn main() {
     println!("🧪 Timeline Scroll Detection Test");
@@ -22,16 +22,16 @@ fn main() {
     println!("   - ONLY move your mouse cursor around");
     println!();
     println!("Starting app in 3 seconds...");
-    
+
     thread::sleep(Duration::from_secs(3));
-    
+
     // Launch the app
     println!("Launching PlonApp...");
     let mut child = Command::new("cargo")
         .args(&["run", "--release"])
         .spawn()
         .expect("Failed to launch app");
-    
+
     println!();
     println!("{}", "=".repeat(50));
     println!("TEST INSTRUCTIONS:");
@@ -42,10 +42,10 @@ fn main() {
     println!("{}", "=".repeat(50));
     println!();
     println!("Waiting for app to close...");
-    
+
     // Wait for the app to close
     let status = child.wait().expect("Failed to wait for app");
-    
+
     println!();
     println!("App closed with status: {:?}", status);
     println!();
