@@ -1,0 +1,23 @@
+{
+  "name": "plon-e2e-tests",
+  "version": "1.0.0",
+  "description": "End-to-end tests for Plon using Playwright",
+  "scripts": {
+    "test": "playwright test",
+    "test:chromium": "playwright test --project=chromium",
+    "test:firefox": "playwright test --project=firefox",
+    "test:webkit": "playwright test --project=webkit",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report",
+    "install:playwright": "playwright install"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^20.10.0",
+    "playwright": "^1.55.0",
+    "puppeteer": "^24.17.1",
+    "typescript": "^5.3.0"
+  }
+}

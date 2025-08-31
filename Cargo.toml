@@ -21,11 +21,20 @@ async-trait = "0.1"
 image = "0.24"  # For screenshot analysis in tests
 parking_lot = "0.12"  # For thread-safe mutexes in tests
 
-# UI - Using egui for immediate mode high-performance GUI
-eframe = "0.27"
-egui = "0.27"
-egui_extras = "0.27"
-egui_plot = "0.27"
+# UI - Migrating to Dioxus for reactive UI
+dioxus = { version = "0.5", features = ["desktop", "web", "router"] }
+dioxus-desktop = "0.5"
+dioxus-web = "0.5"
+dioxus-router = "0.5"
+dioxus-hooks = "0.5"
+fermi = "0.4"  # State management for Dioxus
+
+
+# Web platform support
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement", "CssStyleDeclaration"] }
+js-sys = "0.3"
+wasm-logger = "0.2"
 
 # Database
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "migrate"] }
@@ -63,7 +72,7 @@ reqwest = { version = "0.11", features = ["json"] }
 mockall = "0.12"
 
 [dev-dependencies]
-egui_kittest = "0.30"
+# Testing
 criterion = "0.5"  # For benchmarking
 tempfile = "3.8"  # For test databases
 rstest = "0.18"  # For parameterized tests
@@ -71,6 +80,11 @@ futures = "0.3"  # For async utilities in tests
 rand = "0.8"  # For random number generation in benchmarks
 image = "0.24"  # For screenshot capture and comparison
 imageproc = "0.23"  # For image processing in tests
+
+# For Playwright integration tests (we'll use Node.js/npm for actual Playwright)
+wasm-bindgen-test = "0.3"
+serial_test = "3.0"  # For serializing tests that interact with the browser
+enigo = "0.6.1"
 
 [[bench]]
 name = "performance_benchmark"
@@ -80,4 +94,17 @@ harness = false
 name = "claude_code_performance_tests"
 harness = false
 path = "tests/claude_code_performance_tests.rs"
+
+[profile]
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"
+
 

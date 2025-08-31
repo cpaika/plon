@@ -1,0 +1,15 @@
+[application]
+name = "plon"
+default_platform = "web"
+out_dir = "dist"
+asset_dir = "public"
+
+[web.app]
+title = "Plon - Task Management"
+base_path = "/"
+
+[web.watcher]
+watch_path = ["src", "index.html"]
+reload_html = true
+index_on_404 = true
+

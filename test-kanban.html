@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanban Board Test</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        body.dragging {
+            user-select: none !important;
+            -webkit-user-select: none !important;
+            -moz-user-select: none !important;
+            -ms-user-select: none !important;
+            cursor: grabbing !important;
+        }
+        
+        body.dragging * {
+            cursor: grabbing !important;
+        }
+        
+        h2 {
+            color: white;
+            margin-bottom: 10px;
+            font-weight: 600;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        p {
+            color: rgba(255,255,255,0.9);
+            margin-bottom: 20px;
+        }
+        
+        .kanban-container {
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            padding-bottom: 20px;
+            height: calc(100vh - 120px);
+        }
+        
+        .kanban-column {
+            flex: 0 0 272px;
+            background: #ebecf0;
+            border-radius: 3px;
+            padding: 8px;
+            max-height: 100%;
+            display: flex;
+            flex-direction: column;
+            transition: background-color 0.2s ease;
+        }
+        
+        .kanban-column.drag-over {
+            background-color: rgb(232, 245, 233) !important;
+            box-shadow: inset 0 0 0 2px #4CAF50;
+        }
+        
+        .kanban-column.todo { border-top: 3px solid #868686; }
+        .kanban-column.in-progress { border-top: 3px solid #026aa7; }
+        .kanban-column.review { border-top: 3px solid #ff9f1a; }
+        .kanban-column.done { border-top: 3px solid #61bd4f; }
+        .kanban-column.blocked { border-top: 3px solid #eb5a46; }
+        
+        .column-header {
+            padding: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .column-header h3 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: #172b4d;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        
+        .count {
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            background: rgba(0,0,0,0.08);
+            color: #5e6c84;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 400;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .cards-container {
+            overflow-y: auto;
+            flex: 1;
+            min-height: 50px;
+            padding: 2px;
+        }
+        
+        .cards-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .cards-container::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.04);
+            border-radius: 4px;
+        }
+        
+        .cards-container::-webkit-scrollbar-thumb {
+            background: rgba(0,0,0,0.16);
+            border-radius: 4px;
+        }
+        
+        .cards-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(0,0,0,0.24);
+        }
+        
+        .kanban-card {
+            background: white;
+            border-radius: 3px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            cursor: grab;
+            box-shadow: 0 1px 0 rgba(9,30,66,.25);
+            transition: all 0.2s ease;
+            position: relative;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+        
+        .kanban-card:hover {
+            box-shadow: 0 1px 2px rgba(9,30,66,.25);
+            transform: translateY(-1px);
+        }
+        
+        .kanban-card.dragging {
+            opacity: 0.2;
+            cursor: grabbing !important;
+        }
+        
+        .kanban-card.card-placeholder {
+            background: #f4f5f7;
+            border: 2px dashed #ddd;
+            opacity: 0.5;
+            box-shadow: none;
+        }
+        
+        .kanban-card.ghost {
+            opacity: 0.4;
+            background: #f4f5f7;
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 4px;
+        }
+        
+        .kanban-card h4 {
+            margin: 0 0 4px 0;
+            font-size: 14px;
+            font-weight: 400;
+            color: #172b4d;
+            line-height: 20px;
+            word-wrap: break-word;
+            flex: 1;
+        }
+        
+        .kanban-card p {
+            margin: 4px 0;
+            font-size: 12px;
+            color: #5e6c84;
+            line-height: 16px;
+        }
+        
+        .delete-btn {
+            background: none;
+            border: none;
+            color: #6b778c;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0;
+            margin: -2px -4px 0 4px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+        }
+        
+        .kanban-card:hover .delete-btn {
+            opacity: 0.8;
+        }
+        
+        .delete-btn:hover {
+            background: rgba(9,30,66,.08);
+            color: #172b4d;
+            opacity: 1 !important;
+        }
+        
+        .card-meta {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 8px;
+        }
+        
+        .priority-badge {
+            font-size: 11px;
+            padding: 2px 6px;
+            color: white;
+            border-radius: 3px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        
+        .priority-badge.critical { background: #eb5a46; }
+        .priority-badge.high { background: #f2a900; }
+        .priority-badge.medium { background: #ff9f1a; }
+        .priority-badge.low { background: #61bd4f; }
+        
+        .due-date {
+            font-size: 11px;
+            color: #5e6c84;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            padding: 2px 4px;
+            background: rgba(9,30,66,.04);
+            border-radius: 3px;
+        }
+        
+        .due-date.overdue {
+            background: #ec9488;
+            color: white;
+        }
+        
+        .task-id {
+            font-size: 10px;
+            color: #959da8;
+            margin-left: auto;
+        }
+        
+        .empty-column {
+            padding: 40px 20px;
+            text-align: center;
+            color: #6b778c;
+            border: 2px dashed rgba(9,30,66,.08);
+            border-radius: 3px;
+            background: rgba(9,30,66,.02);
+            margin: 4px;
+            transition: all 0.2s ease;
+        }
+        
+        .empty-column.drag-over {
+            color: #61bd4f;
+            border-color: #61bd4f;
+            background: rgba(97,189,79,.08);
+        }
+        
+        /* Drag ghost image */
+        .drag-ghost {
+            position: fixed;
+            pointer-events: none;
+            z-index: 1000;
+            transform: rotate(3deg);
+            opacity: 0.9;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            background: white;
+            border-radius: 3px;
+            padding: 8px 12px;
+            cursor: grabbing;
+            user-select: none;
+        }
+        
+        /* Add button (Trello-like) */
+        .add-card-btn {
+            padding: 8px;
+            margin-top: 8px;
+            background: none;
+            border: none;
+            border-radius: 3px;
+            color: #5e6c84;
+            cursor: pointer;
+            text-align: left;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .add-card-btn:hover {
+            background: rgba(9,30,66,.08);
+            color: #172b4d;
+        }
+    </style>
+</head>
+<body>
+    <h2>Kanban Board</h2>
+    <p>Drag cards between columns to change their status</p>
+    
+    <div class="kanban-container">
+        <div class="kanban-column todo" data-status="todo">
+            <div class="column-header">
+                <h3>Todo</h3>
+                <span class="count">3</span>
+            </div>
+            <div class="cards-container">
+                <div class="kanban-card" draggable="true" data-id="task-1">
+                    <div class="card-header">
+                        <h4>Implement user authentication</h4>
+                        <button class="delete-btn">×</button>
+                    </div>
+                    <p>Add login and registration functionality</p>
+                    <div class="card-meta">
+                        <span class="priority-badge high">High</span>
+                        <span class="due-date">📅 12/31</span>
+                        <span class="task-id">#task-1</span>
+                    </div>
+                </div>
+                <div class="kanban-card" draggable="true" data-id="task-2">
+                    <div class="card-header">
+                        <h4>Design dashboard layout</h4>
+                        <button class="delete-btn">×</button>
+                    </div>
+                    <p>Create mockups for the main dashboard</p>
+                    <div class="card-meta">
+                        <span class="priority-badge medium">Medium</span>
+                        <span class="task-id">#task-2</span>
+                    </div>
+                </div>
+                <div class="kanban-card" draggable="true" data-id="task-3">
+                    <div class="card-header">
+                        <h4>Set up CI/CD pipeline</h4>
+                        <button class="delete-btn">×</button>
+                    </div>
+                    <div class="card-meta">
+                        <span class="priority-badge low">Low</span>
+                        <span class="task-id">#task-3</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="kanban-column in-progress" data-status="in-progress">
+            <div class="column-header">
+                <h3>In Progress</h3>
+                <span class="count">1</span>
+            </div>
+            <div class="cards-container">
+                <div class="kanban-card" draggable="true" data-id="task-4">
+                    <div class="card-header">
+                        <h4>Implement data models</h4>
+                        <button class="delete-btn">×</button>
+                    </div>
+                    <p>Create database schema and ORM models</p>
+                    <div class="card-meta">
+                        <span class="priority-badge critical">Critical</span>
+                        <span class="due-date overdue">📅 12/25</span>
+                        <span class="task-id">#task-4</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="kanban-column review" data-status="review">
+            <div class="column-header">
+                <h3>Review</h3>
+                <span class="count">1</span>
+            </div>
+            <div class="cards-container">
+                <div class="kanban-card" draggable="true" data-id="task-5">
+                    <div class="card-header">
+                        <h4>API documentation</h4>
+                        <button class="delete-btn">×</button>
+                    </div>
+                    <p>Document all REST endpoints</p>
+                    <div class="card-meta">
+                        <span class="priority-badge medium">Medium</span>
+                        <span class="task-id">#task-5</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="kanban-column done" data-status="done">
+            <div class="column-header">
+                <h3>Done</h3>
+                <span class="count">2</span>
+            </div>
+            <div class="cards-container">
+                <div class="kanban-card" draggable="true" data-id="task-6">
+                    <div class="card-header">
+                        <h4>Project setup</h4>
+                        <button class="delete-btn">×</button>
+                    </div>
+                    <div class="card-meta">
+                        <span class="priority-badge high">High</span>
+                        <span class="task-id">#task-6</span>
+                    </div>
+                </div>
+                <div class="kanban-card" draggable="true" data-id="task-7">
+                    <div class="card-header">
+                        <h4>Requirements gathering</h4>
+                        <button class="delete-btn">×</button>
+                    </div>
+                    <div class="card-meta">
+                        <span class="priority-badge high">High</span>
+                        <span class="task-id">#task-7</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="kanban-column blocked" data-status="blocked">
+            <div class="column-header">
+                <h3>Blocked</h3>
+                <span class="count">0</span>
+            </div>
+            <div class="cards-container">
+                <div class="empty-column">No blocked tasks</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Global drag state
+        let draggedCard = null;
+        let draggedFrom = null;
+        let isMouseDragging = false;
+        let mouseStartColumn = null;
+        let dragGhost = null;
+        let mouseStartPos = { x: 0, y: 0 };
+        let cardStartPos = { x: 0, y: 0 };
+        
+        // Initialize all event handlers
+        function initializeDragAndDrop() {
+            // Setup for each card
+            document.querySelectorAll('.kanban-card').forEach(card => {
+                // HTML5 Drag API
+                card.addEventListener('dragstart', handleDragStart);
+                card.addEventListener('dragend', handleDragEnd);
+                
+                // Mouse-based drag for better control
+                card.addEventListener('mousedown', handleMouseDown);
+            });
+            
+            // Setup for each column
+            document.querySelectorAll('.kanban-column').forEach(column => {
+                // HTML5 Drag API
+                column.addEventListener('dragover', handleDragOver);
+                column.addEventListener('drop', handleDrop);
+                column.addEventListener('dragenter', handleDragEnter);
+                column.addEventListener('dragleave', handleDragLeave);
+                
+                // Mouse events for column highlighting
+                column.addEventListener('mouseenter', handleColumnMouseEnter);
+                column.addEventListener('mouseleave', handleColumnMouseLeave);
+                column.addEventListener('mouseover', handleColumnMouseOver);
+            });
+            
+            // Delete buttons
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', handleDelete);
+                btn.addEventListener('mousedown', e => e.stopPropagation());
+            });
+            
+            // Global mouse events
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            
+            // ESC key to cancel drag
+            document.addEventListener('keydown', handleKeyDown);
+        }
+        
+        // HTML5 Drag API handlers
+        function handleDragStart(e) {
+            draggedCard = this;
+            draggedFrom = this.closest('.kanban-column');
+            this.classList.add('dragging');
+            
+            // Add dragging class to body
+            document.body.classList.add('dragging');
+            
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.innerHTML);
+            
+            // Create custom drag image
+            const dragImage = this.cloneNode(true);
+            dragImage.style.transform = 'rotate(3deg)';
+            dragImage.style.opacity = '0.9';
+            dragImage.style.position = 'absolute';
+            dragImage.style.top = '-1000px';
+            dragImage.style.width = this.offsetWidth + 'px';
+            document.body.appendChild(dragImage);
+            e.dataTransfer.setDragImage(dragImage, e.offsetX, e.offsetY);
+            
+            // Hide original card after a brief delay
+            setTimeout(() => {
+                this.style.visibility = 'hidden';
+                dragImage.remove();
+            }, 0);
+        }
+        
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+            this.style.visibility = '';  // Restore visibility
+            document.body.classList.remove('dragging');
+            clearAllDragStates();
+        }
+        
+        function handleDragOver(e) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
+            e.dataTransfer.dropEffect = 'move';
+            
+            // Ensure column stays highlighted
+            const column = e.currentTarget;
+            if (!column.classList.contains('drag-over') && draggedCard) {
+                column.classList.add('drag-over');
+                column.style.backgroundColor = 'rgb(232, 245, 233)';
+            }
+            
+            return false;
+        }
+        
+        function handleDragEnter(e) {
+            if (draggedCard) {
+                const column = e.currentTarget;
+                column.classList.add('drag-over');
+                column.style.backgroundColor = 'rgb(232, 245, 233)';
+            }
+        }
+        
+        function handleDragLeave(e) {
+            // Only remove highlight if we're leaving the column entirely
+            const column = e.currentTarget;
+            const relatedTarget = e.relatedTarget;
+            
+            if (!column.contains(relatedTarget)) {
+                column.classList.remove('drag-over');
+                column.style.backgroundColor = '';
+            }
+        }
+        
+        function handleDrop(e) {
+            if (e.stopPropagation) {
+                e.stopPropagation();
+            }
+            e.preventDefault();
+            
+            const column = e.currentTarget;
+            if (draggedCard && column !== draggedFrom) {
+                moveCardToColumn(draggedCard, column);
+            }
+            
+            clearAllDragStates();
+            return false;
+        }
+        
+        // Mouse-based drag handlers
+        function handleMouseDown(e) {
+            if (e.button !== 0) return; // Only left click
+            
+            const card = e.currentTarget;
+            isMouseDragging = true;
+            draggedCard = card;
+            mouseStartColumn = card.closest('.kanban-column');
+            
+            // Store initial positions
+            const rect = card.getBoundingClientRect();
+            mouseStartPos = { x: e.clientX, y: e.clientY };
+            cardStartPos = { x: rect.left, y: rect.top };
+            
+            // Add dragging class to body to prevent text selection
+            document.body.classList.add('dragging');
+            
+            // Visual feedback - make card semi-transparent
+            card.classList.add('dragging');
+            
+            // Create ghost element for visual feedback
+            createDragGhost(card, e);
+            
+            // Hide the original card completely after creating ghost
+            setTimeout(() => {
+                if (isMouseDragging) {
+                    card.style.visibility = 'hidden';
+                }
+            }, 0);
+            
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        function handleMouseMove(e) {
+            if (!isMouseDragging || !draggedCard) return;
+            
+            // Update ghost position with stored offsets
+            if (dragGhost) {
+                const offsetX = parseInt(dragGhost.dataset.offsetX || 10);
+                const offsetY = parseInt(dragGhost.dataset.offsetY || 10);
+                dragGhost.style.left = (e.clientX - offsetX) + 'px';
+                dragGhost.style.top = (e.clientY - offsetY) + 'px';
+            }
+            
+            // Hide ghost temporarily to get element under mouse
+            if (dragGhost) dragGhost.style.pointerEvents = 'none';
+            
+            // Highlight column under mouse
+            const elementUnder = document.elementFromPoint(e.clientX, e.clientY);
+            const columnUnder = elementUnder?.closest('.kanban-column');
+            
+            // Update column highlights
+            document.querySelectorAll('.kanban-column').forEach(col => {
+                if (col === columnUnder && col !== mouseStartColumn) {
+                    col.classList.add('drag-over');
+                    col.style.backgroundColor = 'rgb(232, 245, 233)';
+                } else {
+                    col.classList.remove('drag-over');
+                    col.style.backgroundColor = '';
+                }
+            });
+        }
+        
+        function handleMouseUp(e) {
+            if (!isMouseDragging || !draggedCard) return;
+            
+            // Find the column we're dropping on
+            const elementUnder = document.elementFromPoint(e.clientX, e.clientY);
+            const targetColumn = elementUnder?.closest('.kanban-column');
+            
+            if (targetColumn && targetColumn !== mouseStartColumn) {
+                moveCardToColumn(draggedCard, targetColumn);
+            }
+            
+            clearMouseDragState();
+        }
+        
+        function handleColumnMouseEnter(e) {
+            const column = e.currentTarget;
+            if (isMouseDragging && draggedCard && column !== mouseStartColumn) {
+                column.classList.add('drag-over');
+                column.style.backgroundColor = 'rgb(232, 245, 233)';
+            }
+        }
+        
+        function handleColumnMouseLeave(e) {
+            const column = e.currentTarget;
+            const relatedTarget = e.relatedTarget;
+            
+            // Only clear if we're actually leaving the column
+            if (!column.contains(relatedTarget)) {
+                column.classList.remove('drag-over');
+                column.style.backgroundColor = '';
+            }
+        }
+        
+        function handleColumnMouseOver(e) {
+            const column = e.currentTarget;
+            if (isMouseDragging && draggedCard && column !== mouseStartColumn) {
+                column.classList.add('drag-over');
+                column.style.backgroundColor = 'rgb(232, 245, 233)';
+            }
+        }
+        
+        function handleKeyDown(e) {
+            if (e.key === 'Escape') {
+                if (isMouseDragging || draggedCard) {
+                    clearAllDragStates();
+                    clearMouseDragState();
+                }
+            }
+        }
+        
+        function handleDelete(e) {
+            e.stopPropagation();
+            const card = this.closest('.kanban-card');
+            const column = card.closest('.kanban-column');
+            card.remove();
+            updateColumnCounts();
+            checkEmptyColumns();
+        }
+        
+        // Helper functions
+        function createDragGhost(card, e) {
+            // Remove existing ghost if any
+            if (dragGhost) {
+                dragGhost.remove();
+            }
+            
+            // Create ghost element as a clone
+            dragGhost = card.cloneNode(true);
+            dragGhost.classList.add('drag-ghost');
+            dragGhost.classList.remove('dragging');
+            
+            // Calculate offset from mouse position to card top-left
+            const rect = card.getBoundingClientRect();
+            const offsetX = e.clientX - rect.left;
+            const offsetY = e.clientY - rect.top;
+            
+            // Store offsets for accurate positioning
+            dragGhost.dataset.offsetX = offsetX;
+            dragGhost.dataset.offsetY = offsetY;
+            
+            // Position ghost at mouse position
+            dragGhost.style.width = rect.width + 'px';
+            dragGhost.style.left = (e.clientX - offsetX) + 'px';
+            dragGhost.style.top = (e.clientY - offsetY) + 'px';
+            
+            // Remove any hover effects from ghost
+            const deleteBtn = dragGhost.querySelector('.delete-btn');
+            if (deleteBtn) {
+                deleteBtn.style.display = 'none';
+            }
+            
+            document.body.appendChild(dragGhost);
+        }
+        
+        function moveCardToColumn(card, targetColumn) {
+            const targetContainer = targetColumn.querySelector('.cards-container');
+            
+            // Remove empty state if present
+            const emptyState = targetContainer.querySelector('.empty-column');
+            if (emptyState) {
+                emptyState.remove();
+            }
+            
+            // Move the card
+            targetContainer.appendChild(card);
+            
+            // Update counts
+            updateColumnCounts();
+            
+            // Check for empty columns
+            checkEmptyColumns();
+        }
+        
+        function updateColumnCounts() {
+            document.querySelectorAll('.kanban-column').forEach(column => {
+                const container = column.querySelector('.cards-container');
+                const cards = container.querySelectorAll('.kanban-card').length;
+                const countSpan = column.querySelector('.count');
+                if (countSpan) {
+                    countSpan.textContent = cards;
+                }
+            });
+        }
+        
+        function checkEmptyColumns() {
+            document.querySelectorAll('.kanban-column').forEach(column => {
+                const container = column.querySelector('.cards-container');
+                const cards = container.querySelectorAll('.kanban-card');
+                const emptyState = container.querySelector('.empty-column');
+                
+                if (cards.length === 0 && !emptyState) {
+                    const empty = document.createElement('div');
+                    empty.className = 'empty-column';
+                    empty.textContent = 'No tasks';
+                    
+                    // Make empty state droppable
+                    empty.addEventListener('dragover', e => {
+                        e.preventDefault();
+                        empty.classList.add('drag-over');
+                    });
+                    
+                    empty.addEventListener('dragleave', e => {
+                        empty.classList.remove('drag-over');
+                    });
+                    
+                    empty.addEventListener('drop', e => {
+                        e.preventDefault();
+                        if (draggedCard) {
+                            moveCardToColumn(draggedCard, column);
+                        }
+                        clearAllDragStates();
+                    });
+                    
+                    container.appendChild(empty);
+                }
+            });
+        }
+        
+        function clearAllDragStates() {
+            document.querySelectorAll('.kanban-column').forEach(col => {
+                col.classList.remove('drag-over');
+                col.style.backgroundColor = '';
+            });
+            
+            document.querySelectorAll('.kanban-card').forEach(card => {
+                card.classList.remove('dragging');
+                card.style.opacity = '';
+            });
+            
+            document.querySelectorAll('.empty-column').forEach(empty => {
+                empty.classList.remove('drag-over');
+            });
+            
+            draggedCard = null;
+            draggedFrom = null;
+        }
+        
+        function clearMouseDragState() {
+            if (dragGhost) {
+                dragGhost.remove();
+                dragGhost = null;
+            }
+            
+            if (draggedCard) {
+                draggedCard.classList.remove('dragging');
+                draggedCard.style.opacity = '';
+                draggedCard.style.visibility = '';  // Restore visibility
+            }
+            
+            // Remove dragging class from body
+            document.body.classList.remove('dragging');
+            
+            clearAllDragStates();
+            
+            isMouseDragging = false;
+            draggedCard = null;
+            mouseStartColumn = null;
+        }
+        
+        // Initialize everything
+        initializeDragAndDrop();
+        updateColumnCounts();
+        checkEmptyColumns();
+    </script>
+</body>
+</html>

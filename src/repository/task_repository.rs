@@ -27,8 +27,8 @@ impl TaskRepository {
                 id, title, description, status, priority, metadata, tags,
                 created_at, updated_at, due_date, scheduled_date, completed_at,
                 estimated_hours, actual_hours, assigned_resource_id,
-                goal_id, parent_task_id, position_x, position_y, is_archived, assignee, configuration_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                goal_id, parent_task_id, position_x, position_y, is_archived, assignee, configuration_id, sort_order
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .bind(task.id.to_string())
@@ -53,6 +53,7 @@ impl TaskRepository {
         .bind(if task.is_archived { 1 } else { 0 })
         .bind(task.assignee.as_ref())
         .bind(task.configuration_id.map(|id| id.to_string()))
+        .bind(task.sort_order)
         .execute(&mut *tx)
         .await?;
 
@@ -108,7 +109,7 @@ impl TaskRepository {
                 metadata = ?, tags = ?, updated_at = ?, due_date = ?,
                 scheduled_date = ?, completed_at = ?, estimated_hours = ?,
                 actual_hours = ?, assigned_resource_id = ?, goal_id = ?,
-                parent_task_id = ?, position_x = ?, position_y = ?, is_archived = ?, assignee = ?, configuration_id = ?
+                parent_task_id = ?, position_x = ?, position_y = ?, is_archived = ?, assignee = ?, configuration_id = ?, sort_order = ?
             WHERE id = ?
             "#,
         )
@@ -132,6 +133,7 @@ impl TaskRepository {
         .bind(if task.is_archived { 1 } else { 0 })
         .bind(task.assignee.as_ref())
         .bind(task.configuration_id.map(|id| id.to_string()))
+        .bind(task.sort_order)
         .bind(task.id.to_string())
         .execute(&mut *tx)
         .await?;
@@ -196,7 +198,7 @@ impl TaskRepository {
             SELECT id, title, description, status, priority, metadata, tags,
                    created_at, updated_at, due_date, scheduled_date, completed_at,
                    estimated_hours, actual_hours, assigned_resource_id,
-                   goal_id, parent_task_id, position_x, position_y, is_archived, assignee, configuration_id
+                   goal_id, parent_task_id, position_x, position_y, is_archived, assignee, configuration_id, sort_order
             FROM tasks WHERE id = ?
             "#,
         )
@@ -275,7 +277,7 @@ impl TaskRepository {
                    t.metadata, t.tags, t.created_at, t.updated_at, t.due_date,
                    t.scheduled_date, t.completed_at, t.estimated_hours, t.actual_hours,
                    t.assigned_resource_id, t.goal_id, t.parent_task_id,
-                   t.position_x, t.position_y, t.is_archived, t.assignee, t.configuration_id
+                   t.position_x, t.position_y, t.is_archived, t.assignee, t.configuration_id, t.sort_order
             FROM tasks t
             WHERE 1=1
             "#,
@@ -306,7 +308,7 @@ impl TaskRepository {
             query.push_str(&format!(" AND {}", condition));
         }
 
-        query.push_str(" ORDER BY t.created_at DESC");
+        query.push_str(" ORDER BY t.status, t.sort_order, t.created_at DESC");
 
         if let Some(limit) = filters.limit {
             query.push_str(&format!(" LIMIT {}", limit));
@@ -432,6 +434,7 @@ impl TaskRepository {
             configuration_id: row
                 .get::<Option<String>, _>("configuration_id")
                 .and_then(|s| Uuid::parse_str(&s).ok()),
+            sort_order: row.get::<Option<i32>, _>("sort_order").unwrap_or(0),
         })
     }
 }

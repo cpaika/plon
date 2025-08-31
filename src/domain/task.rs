@@ -27,6 +27,7 @@ pub struct Task {
     pub is_archived: bool,
     pub assignee: Option<String>,
     pub configuration_id: Option<Uuid>, // Link to task configuration
+    pub sort_order: i32, // For ordering within Kanban columns
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -95,6 +96,7 @@ impl Task {
             is_archived: false,
             assignee: None,
             configuration_id: None,
+            sort_order: 0,
         }
     }
 

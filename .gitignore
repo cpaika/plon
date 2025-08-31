@@ -4,3 +4,4 @@ target/**
 plan.db
 plon.db-shm
 plon.db-wal
+node_modules/**

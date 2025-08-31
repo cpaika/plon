@@ -21,6 +21,7 @@ mod pr_review_service;
 pub mod command_executor;
 pub mod summarization;
 pub mod timeline_scheduler;
+pub mod claude_automation;
 
 pub use auto_run_orchestrator::{
     AutoRunConfig, AutoRunOrchestrator, AutoRunStatus, AutoRunProgress, TaskExecution,
@@ -34,3 +35,4 @@ pub use recurring_service::RecurringService;
 pub use resource_service::ResourceService;
 pub use task_config_service::TaskConfigService;
 pub use task_service::TaskService;
+pub use claude_automation::ClaudeAutomation;
