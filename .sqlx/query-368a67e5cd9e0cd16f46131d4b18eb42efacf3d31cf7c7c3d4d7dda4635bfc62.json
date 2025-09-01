@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT te.id, te.task_id, te.pr_url, te.status, te.completed_at, t.title\n            FROM task_executions te\n            JOIN tasks t ON te.task_id = t.id\n            WHERE te.pr_url IS NOT NULL \n                AND (te.completed_at > ? OR te.status = ?)\n            ORDER BY te.completed_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "task_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "pr_url",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "status",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "completed_at",
+        "ordinal": 4,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "title",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "368a67e5cd9e0cd16f46131d4b18eb42efacf3d31cf7c7c3d4d7dda4635bfc62"
+}

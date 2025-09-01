@@ -8,6 +8,10 @@ pub mod kanban_view_ordered;
 pub mod timeline_view_simple;
 pub mod gantt_view_simple;
 pub mod dashboard;
+pub mod settings_view;
+
+#[cfg(test)]
+mod list_view_test;
 
 // Working versions with actual functionality  
 pub mod map_working;
@@ -23,3 +27,4 @@ pub use kanban_view_ordered::KanbanViewOrdered as KanbanView;  // Use the ordere
 pub use timeline_view_simple::TimelineView;
 pub use gantt_view_simple::GanttView;
 pub use dashboard::Dashboard;
+pub use settings_view::SettingsView;

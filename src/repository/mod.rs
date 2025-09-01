@@ -1,3 +1,4 @@
+pub mod app_settings_repository;
 pub mod claude_code_repository;
 pub mod comment_repository;
 pub mod database;
@@ -22,6 +23,7 @@ pub struct Repository {
     pub recurring: recurring_repository::RecurringRepository,
     pub task_configs: task_config_repository::TaskConfigRepository,
     pub claude_code: claude_code_repository::ClaudeCodeRepository,
+    pub app_settings: app_settings_repository::AppSettingsRepository,
 }
 
 impl Repository {
@@ -36,6 +38,7 @@ impl Repository {
             recurring: recurring_repository::RecurringRepository::new(pool.clone()),
             task_configs: task_config_repository::TaskConfigRepository::new(pool.clone()),
             claude_code: claude_code_repository::ClaudeCodeRepository::new((*pool).clone()),
+            app_settings: app_settings_repository::AppSettingsRepository::new((*pool).clone()),
             pool,
         }
     }

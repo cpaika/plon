@@ -1,3 +1,4 @@
+pub mod app_settings;
 pub mod claude_code;
 pub mod comment;
 pub mod dependency;

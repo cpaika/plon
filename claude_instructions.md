@@ -5,7 +5,7 @@ You are working on a task from the Plon project management system.
 
 ## Git Configuration
 - Repository: test-owner/test-repo
-- Branch: claude/4ddf265b-test-task
+- Branch: claude/35491364-test-task
 - Base Branch: main
 
 ## Task Requirements
