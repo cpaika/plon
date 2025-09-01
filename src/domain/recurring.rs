@@ -1,8 +1,8 @@
+use crate::domain::task::{Priority, Task};
 use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, Utc, Weekday};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
-use crate::domain::task::{Task, Priority};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RecurringTaskTemplate {
@@ -44,20 +44,16 @@ pub enum RecurrencePattern {
 }
 
 impl RecurringTaskTemplate {
-    pub fn new(
-        title: String,
-        description: String,
-        recurrence_rule: RecurrenceRule,
-    ) -> Self {
+    pub fn new(title: String, description: String, recurrence_rule: RecurrenceRule) -> Self {
         let now = Utc::now();
-        
+
         // Check if template should be active based on end date
         let active = if let Some(end_date) = recurrence_rule.end_date {
             now.date_naive() <= end_date
         } else {
             true
         };
-        
+
         let mut template = Self {
             id: Uuid::new_v4(),
             title,
@@ -87,28 +83,27 @@ impl RecurringTaskTemplate {
         }
 
         if let Some(max) = self.recurrence_rule.max_occurrences
-            && self.recurrence_rule.occurrences_count >= max {
-                self.active = false;
-                return None;
-            }
+            && self.recurrence_rule.occurrences_count >= max
+        {
+            self.active = false;
+            return None;
+        }
 
         if let Some(end_date) = self.recurrence_rule.end_date
-            && Utc::now().date_naive() > end_date {
-                self.active = false;
-                return None;
-            }
+            && Utc::now().date_naive() > end_date
+        {
+            self.active = false;
+            return None;
+        }
 
-        let mut task = Task::new(
-            self.title.clone(),
-            self.description.clone(),
-        );
-        
+        let mut task = Task::new(self.title.clone(), self.description.clone());
+
         task.priority = self.priority;
         task.metadata = self.metadata.clone();
         task.assigned_resource_id = self.assigned_resource_id;
         task.estimated_hours = self.estimated_hours;
         task.configuration_id = None; // Recurring tasks don't have a specific configuration
-        
+
         if let Some(next) = self.next_occurrence {
             task.scheduled_date = Some(next);
         }
@@ -123,14 +118,12 @@ impl RecurringTaskTemplate {
 
     pub fn calculate_next_occurrence(&self) -> DateTime<Utc> {
         let base = self.last_generated.unwrap_or_else(Utc::now);
-        
+
         match self.recurrence_rule.pattern {
-            RecurrencePattern::Daily => {
-                base + Duration::days(self.recurrence_rule.interval as i64)
-            }
+            RecurrencePattern::Daily => base + Duration::days(self.recurrence_rule.interval as i64),
             RecurrencePattern::Weekly => {
                 let mut next = base + Duration::weeks(self.recurrence_rule.interval as i64);
-                
+
                 // Find next matching day of week
                 if !self.recurrence_rule.days_of_week.is_empty() {
                     while !self.recurrence_rule.days_of_week.contains(&next.weekday()) {
@@ -144,7 +137,7 @@ impl RecurringTaskTemplate {
                 for _ in 0..self.recurrence_rule.interval {
                     next = add_months(next, 1);
                 }
-                
+
                 // Adjust to specific day of month if set
                 if let Some(day) = self.recurrence_rule.day_of_month {
                     next = set_day_of_month(next, day);
@@ -156,7 +149,7 @@ impl RecurringTaskTemplate {
                 for _ in 0..self.recurrence_rule.interval {
                     next = add_years(next, 1);
                 }
-                
+
                 // Adjust to specific month and day if set
                 if let Some(month) = self.recurrence_rule.month_of_year {
                     next = set_month(next, month);
@@ -175,6 +168,13 @@ impl RecurringTaskTemplate {
 
     pub fn should_generate_now(&self) -> bool {
         if !self.active {
+            return false;
+        }
+
+        // Check if max occurrences has been reached
+        if let Some(max) = self.recurrence_rule.max_occurrences
+            && self.recurrence_rule.occurrences_count >= max
+        {
             return false;
         }
 
@@ -203,7 +203,7 @@ fn add_months(dt: DateTime<Utc>, months: u32) -> DateTime<Utc> {
     let year = naive.year() + (naive.month() + months - 1) as i32 / 12;
     let month = ((naive.month() + months - 1) % 12) + 1;
     let day = naive.day().min(days_in_month(year, month));
-    
+
     DateTime::from_naive_utc_and_offset(
         NaiveDate::from_ymd_opt(year, month, day)
             .unwrap()
@@ -220,7 +220,7 @@ fn add_years(dt: DateTime<Utc>, years: u32) -> DateTime<Utc> {
     } else {
         naive.day()
     };
-    
+
     DateTime::from_naive_utc_and_offset(
         NaiveDate::from_ymd_opt(year, naive.month(), day)
             .unwrap()
@@ -233,7 +233,7 @@ fn set_day_of_month(dt: DateTime<Utc>, day: u32) -> DateTime<Utc> {
     let naive = dt.naive_utc();
     let max_day = days_in_month(naive.year(), naive.month());
     let actual_day = day.min(max_day);
-    
+
     DateTime::from_naive_utc_and_offset(
         NaiveDate::from_ymd_opt(naive.year(), naive.month(), actual_day)
             .unwrap()
@@ -245,7 +245,7 @@ fn set_day_of_month(dt: DateTime<Utc>, day: u32) -> DateTime<Utc> {
 fn set_month(dt: DateTime<Utc>, month: u32) -> DateTime<Utc> {
     let naive = dt.naive_utc();
     let day = naive.day().min(days_in_month(naive.year(), month));
-    
+
     DateTime::from_naive_utc_and_offset(
         NaiveDate::from_ymd_opt(naive.year(), month, day)
             .unwrap()
@@ -258,7 +258,13 @@ fn days_in_month(year: i32, month: u32) -> u32 {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
-        2 => if is_leap_year(year) { 29 } else { 28 },
+        2 => {
+            if is_leap_year(year) {
+                29
+            } else {
+                28
+            }
+        }
         _ => panic!("Invalid month"),
     }
 }
@@ -294,7 +300,7 @@ mod tests {
 
         let task = template.generate_task();
         assert!(task.is_some());
-        
+
         let task = task.unwrap();
         assert_eq!(task.title, "Daily Standup");
         assert!(template.next_occurrence.is_some());
@@ -413,11 +419,8 @@ mod tests {
             occurrences_count: 0,
         };
 
-        let mut template = RecurringTaskTemplate::new(
-            "Task".to_string(),
-            "Description".to_string(),
-            rule,
-        );
+        let mut template =
+            RecurringTaskTemplate::new("Task".to_string(), "Description".to_string(), rule);
 
         assert!(template.active);
         template.deactivate();
@@ -455,18 +458,18 @@ mod tests {
     #[test]
     fn test_date_helpers() {
         let dt = Utc.with_ymd_and_hms(2024, 1, 31, 12, 0, 0).unwrap();
-        
+
         // Test add_months with day overflow
         let next = add_months(dt, 1);
         assert_eq!(next.month(), 2);
         assert_eq!(next.day(), 29); // February has fewer days
-        
+
         // Test add_years
         let next_year = add_years(dt, 1);
         assert_eq!(next_year.year(), 2025);
         assert_eq!(next_year.month(), 1);
         assert_eq!(next_year.day(), 31);
-        
+
         // Test leap year handling
         let leap_day = Utc.with_ymd_and_hms(2024, 2, 29, 12, 0, 0).unwrap();
         let non_leap = add_years(leap_day, 1);

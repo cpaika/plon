@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Drag Debug</title>
+    <style>
+        .column { width: 200px; height: 300px; border: 1px solid black; display: inline-block; margin: 10px; padding: 10px; }
+        .card { width: 180px; height: 50px; background: lightblue; margin: 5px; cursor: grab; }
+        .dragging { opacity: 0.5; }
+        .drag-over { background: lightgreen !important; }
+    </style>
+</head>
+<body>
+    <div class="column" id="col1">
+        Column 1
+        <div class="card" id="card1">Card 1</div>
+        <div class="card" id="card2">Card 2</div>
+    </div>
+    <div class="column" id="col2">
+        Column 2
+    </div>
+    
+    <script>
+        let draggedCard = null;
+        let isMouseDragging = false;
+        
+        document.querySelectorAll('.card').forEach(card => {
+            card.addEventListener('mousedown', function(e) {
+                console.log('Mouse down on', this.id);
+                isMouseDragging = true;
+                draggedCard = this;
+                this.classList.add('dragging');
+                e.preventDefault();
+            });
+        });
+        
+        document.querySelectorAll('.column').forEach(col => {
+            col.addEventListener('mouseenter', function(e) {
+                console.log('Mouse enter', this.id, 'dragging:', isMouseDragging);
+                if (isMouseDragging) {
+                    this.classList.add('drag-over');
+                }
+            });
+            
+            col.addEventListener('mouseleave', function(e) {
+                console.log('Mouse leave', this.id);
+                this.classList.remove('drag-over');
+            });
+            
+            col.addEventListener('mouseup', function(e) {
+                console.log('Mouse up on', this.id, 'dragging:', isMouseDragging);
+                if (isMouseDragging && draggedCard) {
+                    if (!this.contains(draggedCard)) {
+                        this.appendChild(draggedCard);
+                        console.log('Moved card to', this.id);
+                    }
+                }
+                if (draggedCard) {
+                    draggedCard.classList.remove('dragging');
+                }
+                document.querySelectorAll('.column').forEach(c => c.classList.remove('drag-over'));
+                isMouseDragging = false;
+                draggedCard = null;
+            });
+        });
+        
+        document.addEventListener('mouseup', function() {
+            console.log('Global mouse up');
+            if (draggedCard) {
+                draggedCard.classList.remove('dragging');
+            }
+            document.querySelectorAll('.column').forEach(c => c.classList.remove('drag-over'));
+            isMouseDragging = false;
+            draggedCard = null;
+        });
+    </script>
+</body>
+</html>

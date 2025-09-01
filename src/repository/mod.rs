@@ -1,11 +1,13 @@
-pub mod database;
-pub mod task_repository;
-pub mod goal_repository;
-pub mod resource_repository;
+pub mod app_settings_repository;
+pub mod claude_code_repository;
 pub mod comment_repository;
+pub mod database;
 pub mod dependency_repository;
+pub mod goal_repository;
 pub mod recurring_repository;
+pub mod resource_repository;
 pub mod task_config_repository;
+pub mod task_repository;
 
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -20,6 +22,8 @@ pub struct Repository {
     pub dependencies: dependency_repository::DependencyRepository,
     pub recurring: recurring_repository::RecurringRepository,
     pub task_configs: task_config_repository::TaskConfigRepository,
+    pub claude_code: claude_code_repository::ClaudeCodeRepository,
+    pub app_settings: app_settings_repository::AppSettingsRepository,
 }
 
 impl Repository {
@@ -33,17 +37,17 @@ impl Repository {
             dependencies: dependency_repository::DependencyRepository::new(pool.clone()),
             recurring: recurring_repository::RecurringRepository::new(pool.clone()),
             task_configs: task_config_repository::TaskConfigRepository::new(pool.clone()),
+            claude_code: claude_code_repository::ClaudeCodeRepository::new((*pool).clone()),
+            app_settings: app_settings_repository::AppSettingsRepository::new((*pool).clone()),
             pool,
         }
     }
-    
+
     pub fn new_memory() -> Self {
         // Create an in-memory SQLite database for testing
         let runtime = tokio::runtime::Runtime::new().unwrap();
-        let pool = runtime.block_on(async {
-            SqlitePool::connect(":memory:").await.unwrap()
-        });
-        
+        let pool = runtime.block_on(async { SqlitePool::connect(":memory:").await.unwrap() });
+
         Self::new(pool)
     }
 }

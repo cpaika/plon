@@ -1,0 +1,237 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Run integration tests
+      run: cargo test --test test_integration -- --test-threads=1
+    
+    - name: Upload test results
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: integration-test-results
+        path: target/test-results/
+
+  component-tests:
+    name: Component Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Build component tests
+      run: cargo build --test test_dioxus_components
+    
+    # Component tests may need display even for non-UI parts
+    # Uncomment if needed:
+    # - name: Run component tests
+    #   run: cargo test --test test_dioxus_components
+
+  e2e-tests-macos:
+    name: E2E Tests (macOS)
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Create screenshot directory
+      run: mkdir -p test-screenshots
+    
+    - name: Build E2E tests
+      run: cargo build --test test_e2e_enigo
+    
+    # Note: E2E tests require display and permissions
+    # These might not work in CI without additional setup
+    # Uncomment when ready to run in CI:
+    # - name: Run E2E tests
+    #   run: cargo test --test test_e2e_enigo -- --ignored --nocapture --test-threads=1
+    
+    - name: Upload screenshots
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: e2e-screenshots-macos
+        path: test-screenshots/
+
+  e2e-tests-linux:
+    name: E2E Tests (Linux)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    
+    - name: Install X11 dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev
+    
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Create screenshot directory
+      run: mkdir -p test-screenshots
+    
+    - name: Build E2E tests
+      run: cargo build --test test_e2e_enigo
+    
+    # Run with virtual display on Linux
+    # Uncomment when ready:
+    # - name: Run E2E tests with xvfb
+    #   run: xvfb-run -a cargo test --test test_e2e_enigo -- --ignored --nocapture --test-threads=1
+    
+    - name: Upload screenshots
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: e2e-screenshots-linux
+        path: test-screenshots/
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+    
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Check formatting
+      run: cargo fmt -- --check
+    
+    - name: Run clippy
+      run: cargo clippy -- -D warnings
+
+  build:
+    name: Build
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Build
+      run: cargo build --verbose
+    
+    - name: Build release
+      run: cargo build --release --verbose

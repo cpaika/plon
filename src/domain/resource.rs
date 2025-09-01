@@ -70,17 +70,19 @@ impl Resource {
 
         for (key, value) in &self.metadata_filters {
             if let Some(task_value) = task_metadata.get(key)
-                && task_value == value {
-                    return true;
-                }
+                && task_value == value
+            {
+                return true;
+            }
         }
         false
     }
 
     pub fn get_availability_for_week(&self, week_start: NaiveDate) -> f32 {
         let week_end = week_start + chrono::Duration::days(6);
-        
-        let custom_hours: f32 = self.availability
+
+        let custom_hours: f32 = self
+            .availability
             .iter()
             .filter(|a| a.date >= week_start && a.date <= week_end)
             .map(|a| a.hours_available)
@@ -137,7 +139,13 @@ impl Resource {
 }
 
 impl ResourceAllocation {
-    pub fn new(resource_id: Uuid, task_id: Uuid, hours: f32, start: NaiveDate, end: NaiveDate) -> Self {
+    pub fn new(
+        resource_id: Uuid,
+        task_id: Uuid,
+        hours: f32,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> Self {
         Self {
             id: Uuid::new_v4(),
             resource_id,
@@ -177,7 +185,7 @@ mod tests {
         let mut resource = Resource::new("Jane".to_string(), "Engineer".to_string(), 40.0);
         resource.add_skill("Rust".to_string());
         resource.add_skill("Python".to_string());
-        
+
         assert!(resource.skills.contains("Rust"));
         assert!(resource.skills.contains("Python"));
         assert_eq!(resource.skills.len(), 2);
@@ -188,15 +196,15 @@ mod tests {
         let mut resource = Resource::new("Bob".to_string(), "DevOps".to_string(), 40.0);
         resource.add_metadata_filter("category".to_string(), "infrastructure".to_string());
         resource.add_metadata_filter("team".to_string(), "backend".to_string());
-        
+
         let mut task_metadata = HashMap::new();
         task_metadata.insert("category".to_string(), "infrastructure".to_string());
         assert!(resource.can_work_on_task(&task_metadata));
-        
+
         task_metadata.clear();
         task_metadata.insert("category".to_string(), "frontend".to_string());
         assert!(!resource.can_work_on_task(&task_metadata));
-        
+
         task_metadata.insert("team".to_string(), "backend".to_string());
         assert!(resource.can_work_on_task(&task_metadata));
     }
@@ -205,14 +213,14 @@ mod tests {
     fn test_availability() {
         let mut resource = Resource::new("Alice".to_string(), "PM".to_string(), 40.0);
         let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
-        
+
         // Default availability for weekday
         assert_eq!(resource.get_availability_for_date(date), 8.0); // 40/5
-        
+
         // Set custom availability
         resource.set_availability(date, 4.0);
         assert_eq!(resource.get_availability_for_date(date), 4.0);
-        
+
         // Weekend should be 0 by default
         let weekend = NaiveDate::from_ymd_opt(2024, 1, 20).unwrap(); // Saturday
         assert_eq!(resource.get_availability_for_date(weekend), 0.0);
@@ -221,16 +229,16 @@ mod tests {
     #[test]
     fn test_utilization() {
         let mut resource = Resource::new("Dev".to_string(), "Developer".to_string(), 40.0);
-        
+
         assert_eq!(resource.utilization_percentage(), 0.0);
         assert_eq!(resource.available_hours(), 40.0);
         assert!(!resource.is_overloaded());
-        
+
         resource.current_load = 30.0;
         assert_eq!(resource.utilization_percentage(), 75.0);
         assert_eq!(resource.available_hours(), 10.0);
         assert!(!resource.is_overloaded());
-        
+
         resource.current_load = 50.0;
         assert_eq!(resource.utilization_percentage(), 125.0);
         assert_eq!(resource.available_hours(), 0.0);
@@ -243,9 +251,9 @@ mod tests {
         let task_id = Uuid::new_v4();
         let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
         let end = NaiveDate::from_ymd_opt(2024, 1, 5).unwrap();
-        
+
         let allocation = ResourceAllocation::new(resource_id, task_id, 20.0, start, end);
-        
+
         assert_eq!(allocation.resource_id, resource_id);
         assert_eq!(allocation.task_id, task_id);
         assert_eq!(allocation.hours_allocated, 20.0);
@@ -257,15 +265,15 @@ mod tests {
     fn test_get_availability_for_week() {
         let mut resource = Resource::new("Dev".to_string(), "Developer".to_string(), 40.0);
         let week_start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(); // Monday
-        
+
         // Default weekly hours
         assert_eq!(resource.get_availability_for_week(week_start), 40.0);
-        
+
         // Set custom hours for some days in the week
         resource.set_availability(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(), 6.0);
         resource.set_availability(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap(), 6.0);
         resource.set_availability(NaiveDate::from_ymd_opt(2024, 1, 3).unwrap(), 8.0);
-        
+
         assert_eq!(resource.get_availability_for_week(week_start), 20.0);
     }
 }

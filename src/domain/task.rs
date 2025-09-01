@@ -27,6 +27,7 @@ pub struct Task {
     pub is_archived: bool,
     pub assignee: Option<String>,
     pub configuration_id: Option<Uuid>, // Link to task configuration
+    pub sort_order: i32, // For ordering within Kanban columns
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -63,6 +64,12 @@ pub enum Priority {
     Critical,
 }
 
+impl Default for Task {
+    fn default() -> Self {
+        Self::new("".to_string(), "".to_string())
+    }
+}
+
 impl Task {
     pub fn new(title: String, description: String) -> Self {
         let now = Utc::now();
@@ -89,9 +96,10 @@ impl Task {
             is_archived: false,
             assignee: None,
             configuration_id: None,
+            sort_order: 0,
         }
     }
-    
+
     pub fn new_simple(title: String) -> Self {
         Self::new(title, String::new())
     }
@@ -160,7 +168,7 @@ impl Task {
     pub fn update_status(&mut self, status: TaskStatus) {
         self.status = status;
         self.updated_at = Utc::now();
-        
+
         if status == TaskStatus::Done {
             self.completed_at = Some(Utc::now());
         } else {
@@ -220,7 +228,7 @@ mod tests {
     fn test_add_subtask() {
         let mut task = Task::new("Main Task".to_string(), "".to_string());
         let id = task.add_subtask("Subtask 1".to_string());
-        
+
         assert_eq!(task.subtasks.len(), 1);
         assert_eq!(task.subtasks[0].description, "Subtask 1");
         assert!(!task.subtasks[0].completed);
@@ -231,11 +239,11 @@ mod tests {
     fn test_complete_subtask() {
         let mut task = Task::new("Main Task".to_string(), "".to_string());
         let id = task.add_subtask("Subtask 1".to_string());
-        
+
         assert!(task.complete_subtask(id).is_ok());
         assert!(task.subtasks[0].completed);
         assert!(task.subtasks[0].completed_at.is_some());
-        
+
         // Completing again should error
         assert!(task.complete_subtask(id).is_err());
     }
@@ -245,7 +253,7 @@ mod tests {
         let mut task = Task::new("Main Task".to_string(), "".to_string());
         let id = task.add_subtask("Subtask 1".to_string());
         task.complete_subtask(id).unwrap();
-        
+
         assert!(task.uncomplete_subtask(id).is_ok());
         assert!(!task.subtasks[0].completed);
         assert!(task.subtasks[0].completed_at.is_none());
@@ -257,12 +265,12 @@ mod tests {
         let id1 = task.add_subtask("Subtask 1".to_string());
         let id2 = task.add_subtask("Subtask 2".to_string());
         task.add_subtask("Subtask 3".to_string());
-        
+
         assert_eq!(task.subtask_progress(), (0, 3));
-        
+
         task.complete_subtask(id1).unwrap();
         assert_eq!(task.subtask_progress(), (1, 3));
-        
+
         task.complete_subtask(id2).unwrap();
         assert_eq!(task.subtask_progress(), (2, 3));
     }
@@ -273,7 +281,7 @@ mod tests {
             "Task".to_string(),
             "# Task\n- [ ] First subtask\n- [ ] Second subtask\n- [x] Already done\nSome text\n- [ ] Third subtask".to_string()
         );
-        
+
         task.extract_subtasks_from_markdown();
         assert_eq!(task.subtasks.len(), 3);
         assert_eq!(task.subtasks[0].description, "First subtask");
@@ -286,15 +294,15 @@ mod tests {
         let mut task = Task::new("Task".to_string(), "".to_string());
         assert_eq!(task.status, TaskStatus::Todo);
         assert!(task.completed_at.is_none());
-        
+
         task.update_status(TaskStatus::InProgress);
         assert_eq!(task.status, TaskStatus::InProgress);
         assert!(task.completed_at.is_none());
-        
+
         task.update_status(TaskStatus::Done);
         assert_eq!(task.status, TaskStatus::Done);
         assert!(task.completed_at.is_some());
-        
+
         task.update_status(TaskStatus::Todo);
         assert_eq!(task.status, TaskStatus::Todo);
         assert!(task.completed_at.is_none());
@@ -303,24 +311,27 @@ mod tests {
     #[test]
     fn test_metadata_operations() {
         let mut task = Task::new("Task".to_string(), "".to_string());
-        
+
         task.add_metadata("category".to_string(), "infrastructure".to_string());
         task.add_metadata("team".to_string(), "backend".to_string());
-        
-        assert_eq!(task.metadata.get("category"), Some(&"infrastructure".to_string()));
+
+        assert_eq!(
+            task.metadata.get("category"),
+            Some(&"infrastructure".to_string())
+        );
         assert_eq!(task.metadata.get("team"), Some(&"backend".to_string()));
     }
 
     #[test]
     fn test_tag_operations() {
         let mut task = Task::new("Task".to_string(), "".to_string());
-        
+
         task.add_tag("urgent".to_string());
         task.add_tag("bug".to_string());
-        
+
         assert!(task.tags.contains("urgent"));
         assert!(task.tags.contains("bug"));
-        
+
         assert!(task.remove_tag("urgent"));
         assert!(!task.tags.contains("urgent"));
         assert!(!task.remove_tag("nonexistent"));
@@ -330,10 +341,10 @@ mod tests {
     fn test_is_overdue() {
         let mut task = Task::new("Task".to_string(), "".to_string());
         assert!(!task.is_overdue());
-        
+
         task.due_date = Some(Utc::now() - chrono::Duration::days(1));
         assert!(task.is_overdue());
-        
+
         task.update_status(TaskStatus::Done);
         assert!(!task.is_overdue());
     }
@@ -343,7 +354,7 @@ mod tests {
         let mut task = Task::new("Task".to_string(), "".to_string());
         assert_eq!(task.position.x, 0.0);
         assert_eq!(task.position.y, 0.0);
-        
+
         task.set_position(100.5, 200.3);
         assert_eq!(task.position.x, 100.5);
         assert_eq!(task.position.y, 200.3);

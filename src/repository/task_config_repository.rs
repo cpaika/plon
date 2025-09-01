@@ -1,6 +1,6 @@
 use crate::domain::task_config::TaskConfiguration;
 use anyhow::Result;
-use sqlx::{SqlitePool, Row};
+use sqlx::{Row, SqlitePool};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -24,14 +24,14 @@ impl TaskConfigRepository {
                 state_machine TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
-            )"
+            )",
         )
         .execute(self.pool.as_ref())
         .await?;
 
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS idx_task_configurations_name 
-             ON task_configurations(name)"
+             ON task_configurations(name)",
         )
         .execute(self.pool.as_ref())
         .await?;
@@ -44,7 +44,7 @@ impl TaskConfigRepository {
             "INSERT INTO task_configurations (
                 id, name, description, metadata_schema, state_machine, 
                 created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         )
         .bind(config.id.to_string())
         .bind(&config.name)
@@ -55,7 +55,7 @@ impl TaskConfigRepository {
         .bind(config.updated_at.to_rfc3339())
         .execute(self.pool.as_ref())
         .await?;
-        
+
         Ok(())
     }
 
@@ -67,7 +67,7 @@ impl TaskConfigRepository {
                 metadata_schema = ?4,
                 state_machine = ?5,
                 updated_at = ?6
-             WHERE id = ?1"
+             WHERE id = ?1",
         )
         .bind(config.id.to_string())
         .bind(&config.name)
@@ -77,7 +77,7 @@ impl TaskConfigRepository {
         .bind(config.updated_at.to_rfc3339())
         .execute(self.pool.as_ref())
         .await?;
-        
+
         Ok(())
     }
 
@@ -86,12 +86,12 @@ impl TaskConfigRepository {
             "SELECT id, name, description, metadata_schema, state_machine, 
                     created_at, updated_at
              FROM task_configurations 
-             WHERE id = ?1"
+             WHERE id = ?1",
         )
         .bind(id.to_string())
         .fetch_optional(self.pool.as_ref())
         .await?;
-        
+
         Ok(result.map(|row| self.row_to_config(row)))
     }
 
@@ -100,12 +100,12 @@ impl TaskConfigRepository {
             "SELECT id, name, description, metadata_schema, state_machine, 
                     created_at, updated_at
              FROM task_configurations 
-             WHERE name = ?1"
+             WHERE name = ?1",
         )
         .bind(name)
         .fetch_optional(self.pool.as_ref())
         .await?;
-        
+
         Ok(result.map(|row| self.row_to_config(row)))
     }
 
@@ -114,12 +114,15 @@ impl TaskConfigRepository {
             "SELECT id, name, description, metadata_schema, state_machine, 
                     created_at, updated_at
              FROM task_configurations 
-             ORDER BY name"
+             ORDER BY name",
         )
         .fetch_all(self.pool.as_ref())
         .await?;
-        
-        Ok(rows.into_iter().map(|row| self.row_to_config(row)).collect())
+
+        Ok(rows
+            .into_iter()
+            .map(|row| self.row_to_config(row))
+            .collect())
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<()> {
@@ -127,7 +130,7 @@ impl TaskConfigRepository {
             .bind(id.to_string())
             .execute(self.pool.as_ref())
             .await?;
-        
+
         Ok(())
     }
 
@@ -139,7 +142,7 @@ impl TaskConfigRepository {
         let state_machine_json: String = row.get(4);
         let created_at: String = row.get(5);
         let updated_at: String = row.get(6);
-        
+
         TaskConfiguration {
             id: Uuid::parse_str(&id).unwrap(),
             name,
@@ -159,9 +162,6 @@ impl TaskConfigRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::task_config::{
-        MetadataFieldConfig, FieldType, StateDefinition, StateTransition
-    };
 
     async fn setup_test_db() -> Arc<SqlitePool> {
         let pool = SqlitePool::connect(":memory:").await.unwrap();
@@ -176,12 +176,12 @@ mod tests {
 
         let mut config = TaskConfiguration::new("Test Config".to_string());
         config.description = "Test description".to_string();
-        
+
         repo.create(&config).await.unwrap();
-        
+
         let retrieved = repo.get(config.id).await.unwrap();
         assert!(retrieved.is_some());
-        
+
         let retrieved = retrieved.unwrap();
         assert_eq!(retrieved.name, "Test Config");
         assert_eq!(retrieved.description, "Test description");
@@ -195,11 +195,11 @@ mod tests {
 
         let mut config = TaskConfiguration::new("Original".to_string());
         repo.create(&config).await.unwrap();
-        
+
         config.name = "Updated".to_string();
         config.updated_at = chrono::Utc::now();
         repo.update(&config).await.unwrap();
-        
+
         let retrieved = repo.get(config.id).await.unwrap().unwrap();
         assert_eq!(retrieved.name, "Updated");
     }
@@ -212,10 +212,10 @@ mod tests {
 
         let config1 = TaskConfiguration::new("Config A".to_string());
         let config2 = TaskConfiguration::new("Config B".to_string());
-        
+
         repo.create(&config1).await.unwrap();
         repo.create(&config2).await.unwrap();
-        
+
         let configs = repo.list_all().await.unwrap();
         assert_eq!(configs.len(), 2);
         assert_eq!(configs[0].name, "Config A");
@@ -230,9 +230,9 @@ mod tests {
 
         let config = TaskConfiguration::new("To Delete".to_string());
         repo.create(&config).await.unwrap();
-        
+
         repo.delete(config.id).await.unwrap();
-        
+
         let retrieved = repo.get(config.id).await.unwrap();
         assert!(retrieved.is_none());
     }

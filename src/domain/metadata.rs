@@ -61,9 +61,10 @@ impl MetadataSchema {
         // Validate field values
         for (key, value) in metadata {
             if let Some(field) = self.fields.get(key)
-                && let Err(e) = self.validate_field_value(field, value) {
-                    errors.push(e);
-                }
+                && let Err(e) = self.validate_field_value(field, value)
+            {
+                errors.push(e);
+            }
         }
 
         if errors.is_empty() {
@@ -76,11 +77,13 @@ impl MetadataSchema {
     fn validate_field_value(&self, field: &MetadataField, value: &str) -> Result<(), String> {
         match field.field_type {
             FieldType::Number => {
-                value.parse::<f64>()
+                value
+                    .parse::<f64>()
                     .map_err(|_| format!("Field '{}' must be a valid number", field.name))?;
             }
             FieldType::Boolean => {
-                value.parse::<bool>()
+                value
+                    .parse::<bool>()
                     .map_err(|_| format!("Field '{}' must be true or false", field.name))?;
             }
             FieldType::Select => {
@@ -92,9 +95,10 @@ impl MetadataSchema {
                 }
             }
             FieldType::MultiSelect => {
-                let values: HashSet<String> = value.split(',').map(|s| s.trim().to_string()).collect();
+                let values: HashSet<String> =
+                    value.split(',').map(|s| s.trim().to_string()).collect();
                 let options: HashSet<String> = field.options.iter().cloned().collect();
-                
+
                 if !values.is_subset(&options) {
                     return Err(format!(
                         "Field '{}' values must be from: {:?}",
@@ -130,7 +134,7 @@ impl MetadataSchema {
 impl MetadataSchema {
     pub fn software_development_preset() -> Self {
         let mut schema = Self::new();
-        
+
         schema.add_field(MetadataField {
             name: "category".to_string(),
             field_type: FieldType::Select,
@@ -186,7 +190,7 @@ mod tests {
     #[test]
     fn test_metadata_schema() {
         let mut schema = MetadataSchema::new();
-        
+
         schema.add_field(MetadataField {
             name: "priority".to_string(),
             field_type: FieldType::Select,
@@ -213,7 +217,7 @@ mod tests {
     #[test]
     fn test_validation_required_field() {
         let mut schema = MetadataSchema::new();
-        
+
         schema.add_field(MetadataField {
             name: "required_field".to_string(),
             field_type: FieldType::Text,
@@ -225,7 +229,7 @@ mod tests {
         let metadata = HashMap::new();
         let result = schema.validate(&metadata);
         assert!(result.is_err());
-        
+
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
         assert!(errors[0].contains("required_field"));
@@ -234,7 +238,7 @@ mod tests {
     #[test]
     fn test_validation_select_field() {
         let mut schema = MetadataSchema::new();
-        
+
         schema.add_field(MetadataField {
             name: "status".to_string(),
             field_type: FieldType::Select,
@@ -245,7 +249,7 @@ mod tests {
 
         let mut metadata = HashMap::new();
         metadata.insert("status".to_string(), "invalid".to_string());
-        
+
         let result = schema.validate(&metadata);
         assert!(result.is_err());
 
@@ -256,7 +260,7 @@ mod tests {
     #[test]
     fn test_validation_number_field() {
         let mut schema = MetadataSchema::new();
-        
+
         schema.add_field(MetadataField {
             name: "count".to_string(),
             field_type: FieldType::Number,
@@ -279,12 +283,16 @@ mod tests {
     #[test]
     fn test_validation_multi_select() {
         let mut schema = MetadataSchema::new();
-        
+
         schema.add_field(MetadataField {
             name: "tags".to_string(),
             field_type: FieldType::MultiSelect,
             required: false,
-            options: vec!["bug".to_string(), "feature".to_string(), "enhancement".to_string()],
+            options: vec![
+                "bug".to_string(),
+                "feature".to_string(),
+                "enhancement".to_string(),
+            ],
             default_value: None,
         });
 
@@ -299,7 +307,7 @@ mod tests {
     #[test]
     fn test_validation_email() {
         let mut schema = MetadataSchema::new();
-        
+
         schema.add_field(MetadataField {
             name: "email".to_string(),
             field_type: FieldType::Email,
@@ -319,7 +327,7 @@ mod tests {
     #[test]
     fn test_validation_url() {
         let mut schema = MetadataSchema::new();
-        
+
         schema.add_field(MetadataField {
             name: "website".to_string(),
             field_type: FieldType::Url,
@@ -339,17 +347,17 @@ mod tests {
     #[test]
     fn test_preset_schema() {
         let schema = MetadataSchema::software_development_preset();
-        
+
         assert!(schema.get_field("category").is_some());
         assert!(schema.get_field("team").is_some());
         assert!(schema.get_field("sprint").is_some());
         assert!(schema.get_field("story_points").is_some());
-        
+
         let mut metadata = HashMap::new();
         metadata.insert("category".to_string(), "frontend".to_string());
         metadata.insert("team".to_string(), "engineering".to_string());
         metadata.insert("story_points".to_string(), "5".to_string());
-        
+
         assert!(schema.validate(&metadata).is_ok());
     }
 }

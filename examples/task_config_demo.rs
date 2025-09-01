@@ -1,6 +1,6 @@
 use plon::domain::task_config::{
-    TaskConfiguration, MetadataFieldConfig, FieldType, FieldOption,
-    StateDefinition, StateTransition, create_software_development_config
+    FieldOption, FieldType, MetadataFieldConfig, StateDefinition, StateTransition,
+    TaskConfiguration, create_software_development_config,
 };
 
 fn main() {
@@ -18,23 +18,23 @@ fn main() {
         field_type: FieldType::Select,
         required: true,
         options: vec![
-            FieldOption { 
-                value: "low".to_string(), 
-                label: "Low".to_string(), 
-                color: Some("#22c55e".to_string()), 
-                icon: None 
+            FieldOption {
+                value: "low".to_string(),
+                label: "Low".to_string(),
+                color: Some("#22c55e".to_string()),
+                icon: None,
             },
-            FieldOption { 
-                value: "medium".to_string(), 
-                label: "Medium".to_string(), 
-                color: Some("#eab308".to_string()), 
-                icon: None 
+            FieldOption {
+                value: "medium".to_string(),
+                label: "Medium".to_string(),
+                color: Some("#eab308".to_string()),
+                icon: None,
             },
-            FieldOption { 
-                value: "high".to_string(), 
-                label: "High".to_string(), 
-                color: Some("#ef4444".to_string()), 
-                icon: None 
+            FieldOption {
+                value: "high".to_string(),
+                label: "High".to_string(),
+                color: Some("#ef4444".to_string()),
+                icon: None,
             },
         ],
         default_value: Some("medium".to_string()),
@@ -75,35 +75,43 @@ fn main() {
     println!("Description: {}", config.description);
     println!("\nMetadata Fields:");
     for (name, field) in &config.metadata_schema.fields {
-        println!("  - {} ({}): {:?}", field.display_name, name, field.field_type);
+        println!(
+            "  - {} ({}): {:?}",
+            field.display_name, name, field.field_type
+        );
     }
 
     println!("\nStates:");
     for (name, state) in &config.state_machine.states {
-        println!("  - {} ({}): {}", state.display_name, name, state.description);
+        println!(
+            "  - {} ({}): {}",
+            state.display_name, name, state.description
+        );
     }
 
     println!("\nTransitions:");
     for transition in &config.state_machine.transitions {
-        println!("  - {} -> {} [{}]", 
-            transition.from_state, 
-            transition.to_state, 
-            transition.action_name
+        println!(
+            "  - {} -> {} [{}]",
+            transition.from_state, transition.to_state, transition.action_name
         );
     }
 
     // Test the software development preset
     println!("\n\nSoftware Development Preset");
     println!("============================\n");
-    
+
     let dev_config = create_software_development_config();
-    
+
     println!("Created configuration: {}", dev_config.name);
     println!("Description: {}", dev_config.description);
-    
+
     println!("\nMetadata Fields:");
     for (name, field) in &dev_config.metadata_schema.fields {
-        println!("  - {} ({}): {:?}", field.display_name, name, field.field_type);
+        println!(
+            "  - {} ({}): {:?}",
+            field.display_name, name, field.field_type
+        );
         if !field.options.is_empty() {
             println!("    Options:");
             for option in &field.options {
@@ -114,7 +122,10 @@ fn main() {
 
     println!("\nStates:");
     for (name, state) in &dev_config.state_machine.states {
-        println!("  - {} ({}): {}", state.display_name, name, state.description);
+        println!(
+            "  - {} ({}): {}",
+            state.display_name, name, state.description
+        );
         if state.is_final {
             println!("    [FINAL STATE]");
         }
@@ -122,13 +133,15 @@ fn main() {
 
     println!("\nTransitions:");
     for transition in &dev_config.state_machine.transitions {
-        println!("  - {} -> {} [{}]", 
-            transition.from_state, 
-            transition.to_state, 
-            transition.action_name
+        println!(
+            "  - {} -> {} [{}]",
+            transition.from_state, transition.to_state, transition.action_name
         );
         if !transition.conditions.is_empty() {
-            println!("    Conditions: {} condition(s)", transition.conditions.len());
+            println!(
+                "    Conditions: {} condition(s)",
+                transition.conditions.len()
+            );
         }
         if !transition.effects.is_empty() {
             println!("    Effects: {} effect(s)", transition.effects.len());
