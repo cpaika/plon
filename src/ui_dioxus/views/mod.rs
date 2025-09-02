@@ -11,6 +11,7 @@ pub mod gantt_view_simple;
 // pub mod gantt_view_enhanced; // Temporarily disabled due to lifetime issues
 pub mod dashboard;
 pub mod settings_view;
+pub mod goals_view;
 
 #[cfg(test)]
 mod list_view_test;
@@ -32,3 +33,4 @@ pub use timeline_view_simple::TimelineView;
 pub use gantt_view_simple::GanttView;
 pub use dashboard::Dashboard;
 pub use settings_view::SettingsView;
+pub use goals_view::GoalsView;

@@ -57,6 +57,12 @@ pub fn App() -> Element {
                     class: "nav-menu",
                     
                     button {
+                        class: if *current_view.read() == "goals" { "nav-item active" } else { "nav-item" },
+                        onclick: move |_| current_view.set("goals"),
+                        "🎯 Goals"
+                    }
+                    
+                    button {
                         class: if *current_view.read() == "map" { "nav-item active" } else { "nav-item" },
                         onclick: move |_| current_view.set("map"),
                         "🗺️ Map"
@@ -99,6 +105,7 @@ pub fn App() -> Element {
                 class: "main-content",
                 
                 match current_view.read().as_ref() {
+                    "goals" => rsx! { GoalsView {} },
                     "map" => rsx! { MapView {} },
                     "list" => rsx! { ListView {} },
                     "kanban" => rsx! { KanbanView {} },

@@ -8,6 +8,9 @@ pub enum Route {
     #[route("/")]
     Home {},
     
+    #[route("/goals")]
+    Goals {},
+    
     #[route("/map")]
     Map {},
     
