@@ -2,15 +2,28 @@ use std::process::Command;
 use std::path::PathBuf;
 use uuid::Uuid;
 use crate::domain::task::{Task, TaskStatus};
+use crate::repository::Repository;
 use anyhow::Result;
+use sqlx::Row;
 
 pub struct ClaudeAutomation {
     workspace_dir: PathBuf,
+    repository: Option<Repository>,
 }
 
 impl ClaudeAutomation {
     pub fn new(workspace_dir: PathBuf) -> Self {
-        Self { workspace_dir }
+        Self { 
+            workspace_dir,
+            repository: None,
+        }
+    }
+    
+    pub fn with_repository(workspace_dir: PathBuf, repository: Repository) -> Self {
+        Self {
+            workspace_dir,
+            repository: Some(repository),
+        }
     }
     
     /// Launch Claude Code to work on a specific task
@@ -117,6 +130,71 @@ The task should be implemented following best practices and existing code patter
         }
         
         Ok(TaskStatus::Todo)
+    }
+    
+    /// Update the status of a task execution based on PR status
+    pub async fn update_execution_status(&self, execution_id: Uuid) -> Result<()> {
+        // This method is called by the PR monitor to update task status
+        // when a PR is created or updated
+        
+        // If we don't have a repository connection, we can't update status
+        let Some(ref repository) = self.repository else {
+            return Ok(());
+        };
+        
+        // Get the task execution from the database
+        let execution = sqlx::query(
+            r#"
+            SELECT task_id, pr_url, status
+            FROM task_executions
+            WHERE id = ?
+            "#
+        )
+        .bind(execution_id.to_string())
+        .fetch_optional(&*repository.pool)
+        .await?;
+        
+        let Some(row) = execution else {
+            // Execution not found, nothing to do
+            return Ok(());
+        };
+        
+        // Parse the task ID from the row
+        let task_id_str: String = row.try_get("task_id")?;
+        let task_id = Uuid::parse_str(&task_id_str)?;
+        
+        // Check the current PR status using gh CLI
+        let pr_status = self.check_task_status(task_id).await?;
+        
+        // If status is Review (PR exists), update the task status
+        if pr_status == TaskStatus::Review {
+            // Update the task status to Review
+            if let Ok(Some(mut task)) = repository.tasks.get(task_id).await {
+                if task.status != TaskStatus::Review && task.status != TaskStatus::Done {
+                    task.status = TaskStatus::Review;
+                    repository.tasks.update(&task).await?;
+                    println!("✅ Task {} status updated to Review (PR created)", task.title);
+                }
+            }
+            
+            // Also update the execution status to reflect PR is pending review
+            use crate::domain::task_execution::ExecutionStatus;
+            let pending_status = serde_json::to_string(&ExecutionStatus::PendingReview)?;
+            
+            sqlx::query(
+                r#"
+                UPDATE task_executions
+                SET status = ?
+                WHERE id = ?
+                "#
+            )
+            .bind(pending_status)
+            .bind(execution_id.to_string())
+            .execute(&*repository.pool)
+            .await?;
+        }
+        
+        Ok(())
     }
 }
 

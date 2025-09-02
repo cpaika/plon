@@ -1,10 +1,10 @@
 use dioxus::prelude::*;
 use crate::ui_dioxus::views::*;
 use crate::repository::Repository;
-use crate::services::TimeTrackingService;
+use crate::services::{TimeTrackingService, start_claude_monitor_background, start_pr_monitor_background};
 use std::sync::Arc;
 use sqlx::SqlitePool;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 #[component]
@@ -42,6 +42,17 @@ pub fn App() -> Element {
             // Provide the TimeTrackingService as context
             let time_tracking_service = Arc::new(TimeTrackingService::new(repo.clone()));
             use_context_provider(|| time_tracking_service);
+            
+            // Start background monitoring services
+            // Get workspace directory (use current directory as default)
+            let workspace_dir = std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."));
+            
+            // Start Claude monitor to detect PR creation and update task status
+            start_claude_monitor_background((**repo).clone(), workspace_dir.clone());
+            
+            // Start PR monitor for existing PR tracking
+            start_pr_monitor_background((**repo).clone(), workspace_dir);
             
             rsx! {
                 div {
