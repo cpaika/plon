@@ -1,5 +1,6 @@
 pub mod appearance_settings;
 pub mod claude_config_admin;
+pub mod claude_output_modal_simple;
 pub mod general_settings;
 pub mod workspace_settings;
 // pub mod execution_monitor;  // Uses non-existent task_execution module
@@ -23,6 +24,7 @@ pub mod export_button;
 
 pub use appearance_settings::AppearanceSettings;
 pub use claude_config_admin::ClaudeConfigAdmin;
+pub use claude_output_modal_simple::ClaudeOutputModal;
 pub use general_settings::GeneralSettings;
 pub use task_editor::TaskEditor;
 pub use task_edit_modal::TaskEditModal;
