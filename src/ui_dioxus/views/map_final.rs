@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use crate::domain::task::{Task, TaskStatus, Position, Priority};
 use crate::domain::dependency::{Dependency, DependencyType, DependencyGraph};
 use crate::repository::{Repository, database::init_database};
-use crate::ui_dioxus::components::{TaskEditModal, ConfirmationDialog};
+use crate::ui_dioxus::components::{TaskEditModal, ConfirmationDialog, ClaudeOutputModal};
 use crate::services::{
     AutoRunOrchestrator, AutoRunStatus, AutoRunConfig, TaskExecutionStatus,
     ClaudeCodeService, DependencyService, TaskService,
@@ -34,6 +34,7 @@ pub fn MapView() -> Element {
     let mut error_message = use_signal(|| None::<String>);
     let mut editing_task = use_signal(|| None::<Task>);
     let mut deleting_task = use_signal(|| None::<(Uuid, String)>);
+    let mut showing_claude_output = use_signal(|| None::<Uuid>);
     
     // Autoplay state
     let mut autoplay_status = use_signal(|| AutoRunStatus::Idle);
@@ -659,6 +660,7 @@ pub fn MapView() -> Element {
                                     is_connection_dragging: dragging_connection.read().is_some(),
                                     is_running: is_running,
                                     tasks_signal: tasks.clone(),
+                                    showing_claude_output_signal: showing_claude_output.clone(),
                                     
                                     onclick: move |_| {
                                         if dragging_connection.read().is_none() {
@@ -775,6 +777,14 @@ pub fn MapView() -> Element {
                 on_cancel: move |_| deleting_task.set(None),
             }
         }
+        
+        // Claude Output Modal
+        if let Some(task_id) = showing_claude_output() {
+            ClaudeOutputModal {
+                task_id: task_id,
+                on_close: move |_| showing_claude_output.set(None),
+            }
+        }
     }
 }
 
@@ -788,6 +798,7 @@ fn TaskCard(
     is_connection_dragging: bool,
     is_running: bool,
     tasks_signal: Signal<Vec<Task>>,
+    showing_claude_output_signal: Signal<Option<Uuid>>,
     onclick: EventHandler<MouseEvent>,
     onmousedown: EventHandler<MouseEvent>,
     on_right_node_drag_start: EventHandler<MouseEvent>,
@@ -970,7 +981,7 @@ fn TaskCard(
                         let bg_color = if task.status == TaskStatus::InProgress { "#FF9800" } else { "#4CAF50" };
                         let icon = if task.status == TaskStatus::InProgress { "⚡" } else { "▶" };
                         let tooltip = if task.status == TaskStatus::InProgress { 
-                            "Task in progress" 
+                            "View Claude Code output" 
                         } else { 
                             "Launch Claude Code" 
                         };
@@ -980,28 +991,36 @@ fn TaskCard(
                                 onclick: move |evt| {
                                     evt.stop_propagation();
                                     
-                                    let task_clone = task.clone();
-                                    let task_id = task.id;
-                                    spawn(async move {
-                                        use crate::services::ClaudeAutomation;
-                                        use std::env::current_dir;
-                                        
-                                        let workspace_dir = current_dir().unwrap_or_default();
-                                        let automation = ClaudeAutomation::new(workspace_dir);
-                                        let repo_url = "https://github.com/user/repo.git";
-                                        
-                                        match automation.execute_task(&task_clone, repo_url).await {
-                                            Ok(_) => {
-                                                println!("✅ Claude Code launched for task: {}", task_clone.title);
-                                                tasks_signal.with_mut(|tasks| {
-                                                    if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                                                        t.status = TaskStatus::InProgress;
-                                                    }
-                                                });
+                                    // If task is in progress, show the output modal
+                                    if task.status == TaskStatus::InProgress {
+                                        showing_claude_output_signal.set(Some(task.id));
+                                    } else {
+                                        // Otherwise, launch Claude Code
+                                        let task_clone = task.clone();
+                                        let task_id = task.id;
+                                        spawn(async move {
+                                            use crate::services::ClaudeAutomation;
+                                            use std::env::current_dir;
+                                            
+                                            let workspace_dir = current_dir().unwrap_or_default();
+                                            let automation = ClaudeAutomation::new(workspace_dir);
+                                            let repo_url = "https://github.com/user/repo.git";
+                                            
+                                            match automation.execute_task(&task_clone, repo_url).await {
+                                                Ok(_) => {
+                                                    println!("✅ Claude Code launched for task: {}", task_clone.title);
+                                                    tasks_signal.with_mut(|tasks| {
+                                                        if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
+                                                            t.status = TaskStatus::InProgress;
+                                                        }
+                                                    });
+                                                    // Show the output modal after launching
+                                                    showing_claude_output_signal.set(Some(task_id));
+                                                }
+                                                Err(e) => eprintln!("❌ Failed to launch Claude Code: {}", e),
                                             }
-                                            Err(e) => eprintln!("❌ Failed to launch Claude Code: {}", e),
-                                        }
-                                    });
+                                        });
+                                    }
                                 },
                                 style: "flex: 1; padding: 6px 10px; background: {bg_color}; color: white; 
                                        border: none; border-radius: 4px; cursor: pointer; font-size: 12px; 
