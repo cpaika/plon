@@ -39,6 +39,9 @@ wasm-logger = "0.2"
 # Database
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "migrate"] }
 
+# Data formats
+csv = "1.3"
+
 # Data structures and algorithms
 petgraph = "0.6"  # For dependency graphs
 rstar = "0.12"  # For spatial indexing in map view

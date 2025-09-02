@@ -5,7 +5,7 @@ mod tests {
     use crate::repository::Repository;
     use crate::repository::task_repository::TaskFilters;
     use crate::domain::task::{Task, TaskStatus, Priority, Position};
-    use crate::ui_dioxus::views::list_view_simple::ListView;
+    use crate::ui_dioxus::views::ListView;
     use uuid::Uuid;
     use chrono::Utc;
     use std::collections::{HashMap, HashSet};
