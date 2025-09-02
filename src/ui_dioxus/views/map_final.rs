@@ -3,8 +3,14 @@ use crate::domain::task::{Task, TaskStatus, Position, Priority};
 use crate::domain::dependency::{Dependency, DependencyType, DependencyGraph};
 use crate::repository::{Repository, database::init_database};
 use crate::ui_dioxus::components::{TaskEditModal, ConfirmationDialog};
+use crate::services::{
+    AutoRunOrchestrator, AutoRunStatus, AutoRunConfig, TaskExecutionStatus,
+    ClaudeCodeService, DependencyService, TaskService,
+};
 use uuid::Uuid;
 use std::env::current_dir;
+use std::sync::Arc;
+use std::collections::HashSet;
 
 #[derive(Clone, Debug, PartialEq)]
 struct DragState {
@@ -28,6 +34,12 @@ pub fn MapView() -> Element {
     let mut error_message = use_signal(|| None::<String>);
     let mut editing_task = use_signal(|| None::<Task>);
     let mut deleting_task = use_signal(|| None::<(Uuid, String)>);
+    
+    // Autoplay state
+    let mut autoplay_status = use_signal(|| AutoRunStatus::Idle);
+    let mut autoplay_orchestrator: Signal<Option<Arc<AutoRunOrchestrator>>> = use_signal(|| None);
+    let mut autoplay_progress = use_signal(|| (0usize, 0usize)); // (completed, total)
+    let mut running_tasks = use_signal(|| HashSet::<Uuid>::new());
     
     // Load dependencies from database
     let repository = use_resource(move || async move {
@@ -116,6 +128,23 @@ pub fn MapView() -> Element {
         div {
             style: "width: 100%; height: 100vh; display: flex; flex-direction: column; background: #f5f5f5;",
             
+            // CSS for animations
+            style {
+                "@keyframes pulse {{
+                    0% {{
+                        opacity: 1;
+                        transform: scale(1);
+                    }}
+                    50% {{
+                        opacity: 0.6;
+                        transform: scale(1.2);
+                    }}
+                    100% {{
+                        opacity: 1;
+                        transform: scale(1);
+                    }}
+                }}"
+            }
             
             // Toolbar
             div {
@@ -152,6 +181,175 @@ pub fn MapView() -> Element {
                 }
                 
                 span { style: "margin-left: 20px;", "Zoom: {(*zoom.read() * 100.0) as i32}%" }
+                
+                // Autoplay controls
+                div {
+                    style: "margin-left: auto; display: flex; align-items: center; gap: 10px;",
+                    
+                    if *autoplay_status.read() == AutoRunStatus::Idle {
+                        button {
+                            onclick: move |_| {
+                                // Get all Todo tasks
+                                let todo_tasks: Vec<Uuid> = tasks.read()
+                                    .iter()
+                                    .filter(|t| t.status == TaskStatus::Todo)
+                                    .map(|t| t.id)
+                                    .collect();
+                                
+                                if todo_tasks.is_empty() {
+                                    error_message.set(Some("No Todo tasks to autoplay".to_string()));
+                                    return;
+                                }
+                                
+                                // Initialize orchestrator if needed
+                                if autoplay_orchestrator.read().is_none() {
+                                    let repo_signal = repository.clone();
+                                    let mut orchestrator_signal = autoplay_orchestrator.clone();
+                                    let mut status_signal = autoplay_status.clone();
+                                    let mut progress_signal = autoplay_progress.clone();
+                                    let mut error_signal = error_message.clone();
+                                    spawn(async move {
+                                        if let Some(Some(repo)) = repo_signal.read().as_ref() {
+                                            let repo_arc = Arc::new(repo.clone());
+                                            let claude_service = Arc::new(ClaudeCodeService::new(repo.claude_code.clone()));
+                                            let dependency_service = Arc::new(DependencyService::new(repo_arc.clone()));
+                                            let task_service = Arc::new(TaskService::new(repo_arc.clone()));
+                                            
+                                            let orchestrator = Arc::new(AutoRunOrchestrator::new(
+                                                repo_arc,
+                                                claude_service,
+                                                dependency_service,
+                                                task_service,
+                                            ));
+                                            
+                                            orchestrator_signal.set(Some(orchestrator.clone()));
+                                            
+                                            // Configure with parallelism of 3
+                                            let mut config = AutoRunConfig::default();
+                                            config.max_parallel_instances = 3;
+                                            *orchestrator.config.write().await = config;
+                                            
+                                            // Start autoplay
+                                            status_signal.set(AutoRunStatus::Running);
+                                            progress_signal.set((0, todo_tasks.len()));
+                                            
+                                            // Start progress monitoring in background
+                                            let orchestrator_clone = orchestrator.clone();
+                                            let mut progress_signal = autoplay_progress.clone();
+                                            let mut status_signal = autoplay_status.clone();
+                                            let mut running_signal = running_tasks.clone();
+                                            spawn(async move {
+                                                loop {
+                                                    let progress = orchestrator_clone.get_progress().await;
+                                                    progress_signal.set((progress.completed_tasks, progress.total_tasks));
+                                                    
+                                                    // Update running tasks
+                                                    let executions = orchestrator_clone.executions.read().await;
+                                                    let mut running = HashSet::new();
+                                                    for (task_id, execution) in executions.iter() {
+                                                        if execution.status == TaskExecutionStatus::Running {
+                                                            running.insert(*task_id);
+                                                        }
+                                                    }
+                                                    running_signal.set(running);
+                                                    
+                                                    // Check if completed
+                                                    if progress.completed_tasks + progress.failed_tasks >= progress.total_tasks {
+                                                        if progress.failed_tasks > 0 {
+                                                            status_signal.set(AutoRunStatus::Failed(format!("{} tasks failed", progress.failed_tasks)));
+                                                        } else {
+                                                            status_signal.set(AutoRunStatus::Completed);
+                                                        }
+                                                        running_signal.set(HashSet::new());
+                                                        break;
+                                                    }
+                                                    
+                                                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                                                }
+                                            });
+                                            
+                                            // Start the autorun
+                                            match orchestrator.start_auto_run(todo_tasks).await {
+                                                Ok(_) => {
+                                                    // Status will be updated by progress monitor
+                                                },
+                                                Err(e) => {
+                                                    status_signal.set(AutoRunStatus::Failed(e.to_string()));
+                                                    error_signal.set(Some(format!("Autoplay failed: {}", e)));
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+                            },
+                            style: "padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 5px;",
+                            "▶️ Autoplay"
+                        }
+                    } else if *autoplay_status.read() == AutoRunStatus::Running {
+                        button {
+                            onclick: move |_| {
+                                let mut status_signal = autoplay_status.clone();
+                                let orchestrator_signal = autoplay_orchestrator.clone();
+                                spawn(async move {
+                                    if let Some(orchestrator) = orchestrator_signal.read().as_ref() {
+                                        orchestrator.pause().await;
+                                        status_signal.set(AutoRunStatus::Paused);
+                                    }
+                                });
+                            },
+                            style: "padding: 8px 16px; background: #FFC107; color: white; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 5px;",
+                            "⏸️ Pause"
+                        }
+                    } else if *autoplay_status.read() == AutoRunStatus::Paused {
+                        button {
+                            onclick: move |_| {
+                                let mut status_signal = autoplay_status.clone();
+                                let orchestrator_signal = autoplay_orchestrator.clone();
+                                spawn(async move {
+                                    if let Some(orchestrator) = orchestrator_signal.read().as_ref() {
+                                        orchestrator.resume().await;
+                                        status_signal.set(AutoRunStatus::Running);
+                                    }
+                                });
+                            },
+                            style: "padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 5px;",
+                            "▶️ Resume"
+                        }
+                    }
+                    
+                    if *autoplay_status.read() != AutoRunStatus::Idle {
+                        button {
+                            onclick: move |_| {
+                                let mut status_signal = autoplay_status.clone();
+                                let mut orchestrator_signal = autoplay_orchestrator.clone();
+                                spawn(async move {
+                                    if let Some(orchestrator) = orchestrator_signal.read().as_ref().cloned() {
+                                        orchestrator.stop().await;
+                                        status_signal.set(AutoRunStatus::Idle);
+                                    }
+                                    orchestrator_signal.set(None);
+                                });
+                            },
+                            style: "padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 5px;",
+                            "⏹️ Stop"
+                        }
+                    }
+                    
+                    // Progress indicator
+                    if *autoplay_status.read() == AutoRunStatus::Running || *autoplay_status.read() == AutoRunStatus::Paused {
+                        {                            
+                            let (completed, total) = *autoplay_progress.read();
+                            rsx! {
+                                div {
+                                    style: "padding: 8px 12px; background: #e3f2fd; color: #1976d2; border-radius: 4px; font-size: 14px;",
+                                    "Progress: {completed}/{total} tasks"
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                span { style: "width: 10px;" } // Spacer
                 
                 if dragging_connection.read().is_some() {
                     span {
@@ -449,6 +647,8 @@ pub fn MapView() -> Element {
                                 .map(|(from, to)| *from == task.id || *to == task.id)
                                 .unwrap_or(false);
                             
+                            let is_running = running_tasks.read().contains(&task.id);
+                            
                             rsx! {
                                 TaskCard {
                                     task: task.clone(),
@@ -457,6 +657,7 @@ pub fn MapView() -> Element {
                                     is_highlighted: is_highlighted,
                                     is_left_node_hover: hover_left_node.read().as_ref() == Some(&task.id),
                                     is_connection_dragging: dragging_connection.read().is_some(),
+                                    is_running: is_running,
                                     tasks_signal: tasks.clone(),
                                     
                                     onclick: move |_| {
@@ -585,6 +786,7 @@ fn TaskCard(
     is_highlighted: bool,
     is_left_node_hover: bool,
     is_connection_dragging: bool,
+    is_running: bool,
     tasks_signal: Signal<Vec<Task>>,
     onclick: EventHandler<MouseEvent>,
     onmousedown: EventHandler<MouseEvent>,
@@ -603,7 +805,9 @@ fn TaskCard(
         _ => "#666",
     };
     
-    let border_color = if selected {
+    let border_color = if is_running {
+        "#FFC107"  // Orange for running tasks
+    } else if selected {
         "#4CAF50"
     } else if is_highlighted {
         "#4CAF50"
@@ -614,7 +818,9 @@ fn TaskCard(
     let opacity = if dragging { "0.6" } else { "1" };
     let cursor = if dragging { "grabbing" } else { "grab" };
     
-    let shadow = if is_highlighted {
+    let shadow = if is_running {
+        "0 4px 20px rgba(255, 193, 7, 0.6)"  // Golden glow for running tasks
+    } else if is_highlighted {
         "0 4px 20px rgba(76, 175, 80, 0.4)"
     } else if dragging {
         "0 4px 16px rgba(0,0,0,0.3)"
@@ -727,8 +933,16 @@ fn TaskCard(
                     style: "display: flex; justify-content: space-between; align-items: center; gap: 8px;",
                     
                     h4 { 
-                        style: "margin: 0; font-size: 14px; font-weight: 600; flex: 1; color: #1f2937;", 
-                        "{task.title}" 
+                        style: "margin: 0; font-size: 14px; font-weight: 600; flex: 1; color: #1f2937; display: flex; align-items: center; gap: 6px;", 
+                        "{task.title}"
+                        
+                        // Running indicator
+                        if is_running {
+                            span {
+                                style: "display: inline-flex; width: 8px; height: 8px; background: #FFC107; border-radius: 50%; animation: pulse 1.5s ease-in-out infinite;",
+                                title: "Task is currently being executed"
+                            }
+                        }
                     }
                     
                     span {

@@ -82,7 +82,7 @@ pub struct AutoRunOrchestrator {
     task_service: Arc<TaskService>,
 
     status: Arc<RwLock<AutoRunStatus>>,
-    config: Arc<RwLock<AutoRunConfig>>,
+    pub config: Arc<RwLock<AutoRunConfig>>,
     pub executions: Arc<RwLock<HashMap<Uuid, TaskExecution>>>,
     execution_queue: Arc<Mutex<Vec<Uuid>>>,
     active_sessions: Arc<RwLock<HashSet<Uuid>>>,
