@@ -96,7 +96,7 @@ pub fn GeneralSettings() -> Element {
                         style: "width: 200px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px;",
                         value: "{default_task_status:?}",
                         onchange: move |e| {
-                            if let Ok(status) = e.value().parse::<String>() {
+                            let status = e.value().parse::<String>().unwrap();
                                 match status.as_str() {
                                     "Todo" => default_task_status.set(TaskStatus::Todo),
                                     "InProgress" => default_task_status.set(TaskStatus::InProgress),
@@ -105,7 +105,6 @@ pub fn GeneralSettings() -> Element {
                                     "Done" => default_task_status.set(TaskStatus::Done),
                                     _ => {}
                                 }
-                            }
                         },
                         option { value: "Todo", "Todo" }
                         option { value: "InProgress", "In Progress" }

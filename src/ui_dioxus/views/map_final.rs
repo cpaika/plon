@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use crate::domain::task::{Task, TaskStatus, Position, Priority};
 use crate::domain::dependency::{Dependency, DependencyType, DependencyGraph};
 use crate::repository::{Repository, database::init_database};
+use crate::ui_dioxus::components::{TaskEditModal, ConfirmationDialog};
 use uuid::Uuid;
 use std::env::current_dir;
 
@@ -25,6 +26,8 @@ pub fn MapView() -> Element {
     let mut hover_left_node = use_signal(|| None::<Uuid>);
     let mut mouse_position = use_signal(|| (0.0, 0.0));
     let mut error_message = use_signal(|| None::<String>);
+    let mut editing_task = use_signal(|| None::<Task>);
+    let mut deleting_task = use_signal(|| None::<(Uuid, String)>);
     
     // Load dependencies from database
     let repository = use_resource(move || async move {
@@ -505,17 +508,18 @@ pub fn MapView() -> Element {
                                         });
                                     },
                                     
-                                    ondelete: move |_| {
-                                        dependencies.with_mut(|deps| {
-                                            deps.retain(|d| d.from_task_id != task.id && d.to_task_id != task.id);
-                                        });
-                                        
-                                        tasks.with_mut(|tasks| {
-                                            tasks.retain(|t| t.id != task.id);
-                                        });
-                                        
-                                        if selected_task.read().as_ref() == Some(&task.id) {
-                                            selected_task.set(None);
+                                    on_edit: {
+                                        let task_clone = task.clone();
+                                        move |_| {
+                                            editing_task.set(Some(task_clone.clone()));
+                                        }
+                                    },
+                                    
+                                    ondelete: {
+                                        let task_id = task.id;
+                                        let task_title = task.title.clone();
+                                        move |_| {
+                                            deleting_task.set(Some((task_id, task_title.clone())));
                                         }
                                     }
                                 }
@@ -523,6 +527,51 @@ pub fn MapView() -> Element {
                         }
                     }
                 }
+            }
+        }
+        
+        // Edit modal
+        if let Some(task) = editing_task() {
+            TaskEditModal {
+                task: task.clone(),
+                on_save: move |updated_task: Task| {
+                    // Update the task in the list
+                    tasks.with_mut(|tasks| {
+                        if let Some(index) = tasks.iter().position(|t| t.id == updated_task.id) {
+                            tasks[index] = updated_task;
+                        }
+                    });
+                    editing_task.set(None);
+                },
+                on_cancel: move |_| editing_task.set(None),
+            }
+        }
+        
+        // Delete confirmation dialog
+        if let Some((task_id, task_title)) = deleting_task() {
+            ConfirmationDialog {
+                title: "Delete Task".to_string(),
+                message: format!("Are you sure you want to delete \"{}\"? This action cannot be undone.", task_title),
+                confirm_text: "Delete".to_string(),
+                cancel_text: "Cancel".to_string(),
+                danger: true,
+                on_confirm: move |_| {
+                    // Delete the task
+                    dependencies.with_mut(|deps| {
+                        deps.retain(|d| d.from_task_id != task_id && d.to_task_id != task_id);
+                    });
+                    
+                    tasks.with_mut(|tasks| {
+                        tasks.retain(|t| t.id != task_id);
+                    });
+                    
+                    if selected_task.read().as_ref() == Some(&task_id) {
+                        selected_task.set(None);
+                    }
+                    
+                    deleting_task.set(None);
+                },
+                on_cancel: move |_| deleting_task.set(None),
             }
         }
     }
@@ -543,6 +592,7 @@ fn TaskCard(
     on_left_node_enter: EventHandler<MouseEvent>,
     on_left_node_leave: EventHandler<MouseEvent>,
     onstatuschange: EventHandler<MouseEvent>,
+    on_edit: EventHandler<MouseEvent>,
     ondelete: EventHandler<MouseEvent>
 ) -> Element {
     let status_color = match task.status {
@@ -580,12 +630,12 @@ fn TaskCard(
     
     let card_style = format!(
         "position: absolute; left: {}px; top: {}px; \
-         width: 200px; height: 60px; background: white; border-radius: 8px; \
+         width: 280px; min-height: 100px; background: white; border-radius: 12px; \
          box-shadow: {}; cursor: {}; \
          border: 2px solid {}; opacity: {}; \
          transform: {}; \
          transition: all 0.2s ease; \
-         user-select: none; display: flex; align-items: center;",
+         user-select: none; display: flex; flex-direction: column; padding: 12px;",
         task.position.x, task.position.y, shadow, cursor, border_color, opacity, transform
     );
     
@@ -670,19 +720,20 @@ fn TaskCard(
             
             // Task content
             div {
-                style: "flex: 1; padding: 8px 24px; display: flex; flex-direction: column; justify-content: center; pointer-events: none;",
+                style: "flex: 1; display: flex; flex-direction: column; gap: 8px; pointer-events: none;",
                 
+                // Header with title and status
                 div {
-                    style: "display: flex; justify-content: space-between; align-items: center;",
+                    style: "display: flex; justify-content: space-between; align-items: center; gap: 8px;",
                     
                     h4 { 
-                        style: "margin: 0; font-size: 13px; font-weight: 500; flex: 1;", 
+                        style: "margin: 0; font-size: 14px; font-weight: 600; flex: 1; color: #1f2937;", 
                         "{task.title}" 
                     }
                     
                     span {
-                        style: "padding: 2px 6px; border-radius: 3px; font-size: 10px; 
-                               color: white; background: {status_color};",
+                        style: "padding: 4px 8px; border-radius: 4px; font-size: 11px; 
+                               color: white; background: {status_color}; font-weight: 500;",
                         "{task.status:?}"
                     }
                 }
@@ -695,71 +746,83 @@ fn TaskCard(
                 }
             }
             
+            // Action buttons row at bottom
             if !is_connection_dragging {
-                // Claude Code button (play/in-progress indicator)
-                {
-                    let bg_color = if task.status == TaskStatus::InProgress { "#FF9800" } else { "#4CAF50" };
-                    let icon = if task.status == TaskStatus::InProgress { "⚡" } else { "▶" };
-                    let tooltip = if task.status == TaskStatus::InProgress { 
-                        "Task in progress" 
-                    } else { 
-                        "Launch Claude Code to work on this task" 
-                    };
+                div {
+                    style: "display: flex; gap: 8px; margin-top: 8px; pointer-events: auto;",
                     
-                    rsx! {
-                        button {
-                            onclick: move |evt| {
-                                evt.stop_propagation();
-                                
-                                // Launch Claude Code for this task
-                                let task_clone = task.clone();
-                                let task_id = task.id;
-                                spawn(async move {
-                                    use crate::services::ClaudeAutomation;
-                                    use std::env::current_dir;
+                    // Claude Code button
+                    {
+                        let bg_color = if task.status == TaskStatus::InProgress { "#FF9800" } else { "#4CAF50" };
+                        let icon = if task.status == TaskStatus::InProgress { "⚡" } else { "▶" };
+                        let tooltip = if task.status == TaskStatus::InProgress { 
+                            "Task in progress" 
+                        } else { 
+                            "Launch Claude Code" 
+                        };
+                        
+                        rsx! {
+                            button {
+                                onclick: move |evt| {
+                                    evt.stop_propagation();
                                     
-                                    let workspace_dir = current_dir().unwrap_or_default();
-                                    let automation = ClaudeAutomation::new(workspace_dir);
-                                    
-                                    // For now, using local repo - in future could get from config
-                                    let repo_url = "https://github.com/user/repo.git";
-                                    
-                                    match automation.execute_task(&task_clone, repo_url).await {
-                                        Ok(_) => {
-                                            println!("✅ Claude Code launched for task: {}", task_clone.title);
-                                            
-                                            // Update task status to InProgress in UI
-                                            tasks_signal.with_mut(|tasks| {
-                                                if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
-                                                    t.status = TaskStatus::InProgress;
-                                                }
-                                            });
+                                    let task_clone = task.clone();
+                                    let task_id = task.id;
+                                    spawn(async move {
+                                        use crate::services::ClaudeAutomation;
+                                        use std::env::current_dir;
+                                        
+                                        let workspace_dir = current_dir().unwrap_or_default();
+                                        let automation = ClaudeAutomation::new(workspace_dir);
+                                        let repo_url = "https://github.com/user/repo.git";
+                                        
+                                        match automation.execute_task(&task_clone, repo_url).await {
+                                            Ok(_) => {
+                                                println!("✅ Claude Code launched for task: {}", task_clone.title);
+                                                tasks_signal.with_mut(|tasks| {
+                                                    if let Some(t) = tasks.iter_mut().find(|t| t.id == task_id) {
+                                                        t.status = TaskStatus::InProgress;
+                                                    }
+                                                });
+                                            }
+                                            Err(e) => eprintln!("❌ Failed to launch Claude Code: {}", e),
                                         }
-                                        Err(e) => eprintln!("❌ Failed to launch Claude Code: {}", e),
-                                    }
-                                });
-                            },
-                            style: "position: absolute; top: 2px; right: 26px; width: 24px; height: 20px; 
-                                   background: {bg_color}; color: white; border: none; border-radius: 3px; 
-                                   cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center;
-                                   transition: background 0.2s;",
-                            title: "{tooltip}",
-                            
-                            "{icon}"
+                                    });
+                                },
+                                style: "flex: 1; padding: 6px 10px; background: {bg_color}; color: white; 
+                                       border: none; border-radius: 4px; cursor: pointer; font-size: 12px; 
+                                       font-weight: 500; display: flex; align-items: center; justify-content: center; 
+                                       gap: 4px; transition: all 0.2s;",
+                                title: "{tooltip}",
+                                
+                                "{icon} Claude"
+                            }
                         }
                     }
-                }
-                
-                // Delete button
-                button {
-                    onclick: move |evt| {
-                        evt.stop_propagation();
-                        ondelete.call(evt);
-                    },
-                    style: "position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; 
-                           background: #ffcdd2; color: #c62828; border: none; border-radius: 3px; 
-                           cursor: pointer; font-size: 12px;",
-                    "×"
+                    
+                    // Edit button
+                    button {
+                        onclick: move |evt| {
+                            evt.stop_propagation();
+                            on_edit.call(evt);
+                        },
+                        style: "flex: 1; padding: 6px 10px; background: #2196F3; color: white; 
+                               border: none; border-radius: 4px; cursor: pointer; font-size: 12px; 
+                               font-weight: 500; transition: all 0.2s;",
+                        "Edit"
+                    }
+                    
+                    // Delete button
+                    button {
+                        onclick: move |evt| {
+                            evt.stop_propagation();
+                            ondelete.call(evt);
+                        },
+                        style: "padding: 6px 10px; background: #f44336; color: white; 
+                               border: none; border-radius: 4px; cursor: pointer; font-size: 12px; 
+                               font-weight: 500; transition: all 0.2s;",
+                        "Delete"
+                    }
                 }
             }
         }

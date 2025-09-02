@@ -1,11 +1,11 @@
 # Task for Claude Code
 
 ## Task Details
-- **ID**: 04d6d4f9-aaa3-40b8-be5a-b173b225fbc9
-- **Title**: Set up CI/CD pipeline
-- **Description**: 
-- **Status**: Todo
-- **Priority**: Low
+- **ID**: b6559eba-5427-4e2a-95c5-9b69ead90046
+- **Title**: Design dashboard layout
+- **Description**: Create mockups for the main dashboard
+- **Status**: InProgress
+- **Priority**: Medium
 
 ## Instructions
 Please complete this task by:
@@ -15,12 +15,12 @@ Please complete this task by:
 4. Opening a PR when complete
 
 ## Branch
-You are currently on branch: task/04d6d4f9-set-up-ci-cd-pipeline
+You are currently on branch: task/b6559eba-design-dashboard-layout
 
 ## Commands to run when complete:
 ```bash
 git add .
-git commit -m "Complete task: Set up CI/CD pipeline"
-git push -u origin task/04d6d4f9-set-up-ci-cd-pipeline
-gh pr create --title "Complete task: Set up CI/CD pipeline" --body "Automated task completion for: "
+git commit -m "Complete task: Design dashboard layout"
+git push -u origin task/b6559eba-design-dashboard-layout
+gh pr create --title "Complete task: Design dashboard layout" --body "Automated task completion for: Create mockups for the main dashboard"
 ```

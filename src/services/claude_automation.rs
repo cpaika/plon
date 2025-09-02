@@ -74,81 +74,14 @@ The task should be implemented following best practices and existing code patter
             }
             Err(e) => {
                 eprintln!("❌ Failed to launch Claude Code: {}", e);
-                
-                // Fallback: Try to open in terminal with a simpler command
-                self.launch_claude_terminal_fallback(task, &branch_name).await?;
+                eprintln!("💡 Please ensure Claude Code CLI is installed and in your PATH");
+                eprintln!("   You can install it from: https://claude.ai/download");
+                return Err(anyhow::anyhow!("Claude Code CLI not available"));
             }
         }
         
         // Clean up prompt file
         let _ = std::fs::remove_file(prompt_file);
-        
-        Ok(())
-    }
-    
-    /// Fallback method to launch Claude in terminal if the CLI isn't available
-    async fn launch_claude_terminal_fallback(&self, task: &Task, branch_name: &str) -> Result<()> {
-        println!("📝 Preparing task for manual Claude Code execution...");
-        
-        // Create and checkout branch
-        Command::new("git")
-            .current_dir(&self.workspace_dir)
-            .args(&["checkout", "-b", branch_name])
-            .output()?;
-        
-        // Create a TODO file with task details
-        let todo_file = self.workspace_dir.join("TODO_CLAUDE.md");
-        let content = format!(
-            r#"# Task for Claude Code
-
-## Task Details
-- **ID**: {}
-- **Title**: {}
-- **Description**: {}
-- **Status**: {:?}
-- **Priority**: {:?}
-
-## Instructions
-Please complete this task by:
-1. Implementing the required functionality
-2. Writing tests if applicable
-3. Creating clear commits
-4. Opening a PR when complete
-
-## Branch
-You are currently on branch: {}
-
-## Commands to run when complete:
-```bash
-git add .
-git commit -m "Complete task: {}"
-git push -u origin {}
-gh pr create --title "Complete task: {}" --body "Automated task completion for: {}"
-```
-"#,
-            task.id,
-            task.title,
-            task.description,
-            task.status,
-            task.priority,
-            branch_name,
-            task.title,
-            branch_name,
-            task.title,
-            task.description
-        );
-        
-        std::fs::write(&todo_file, content)?;
-        
-        println!("📋 Task details written to TODO_CLAUDE.md");
-        println!("🚀 Open this directory in Claude Code to start working on the task");
-        
-        // Try to open VS Code or default editor
-        let _ = Command::new("code")
-            .current_dir(&self.workspace_dir)
-            .arg(".")
-            .arg("TODO_CLAUDE.md")
-            .spawn();
         
         Ok(())
     }

@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use crate::domain::task::{Task, TaskStatus};
 use crate::ui_dioxus::state_simple::sample_tasks;
+use crate::ui_dioxus::components::TaskEditModal;
 use crate::repository::Repository;
 use crate::repository::task_repository::TaskFilters;
 use uuid::Uuid;
@@ -17,6 +18,7 @@ pub fn KanbanViewOrdered() -> Element {
     let mut drag_over_status = use_signal(|| None::<TaskStatus>);
     let mut drag_over_position = use_signal(|| None::<usize>); // Position in the column where we're hovering
     let mut mouse_position = use_signal(|| (0.0, 0.0));
+    let mut editing_task = use_signal(|| None::<Task>);
     
     // Load repository and tasks asynchronously
     let _ = use_resource(move || async move {
@@ -180,6 +182,7 @@ pub fn KanbanViewOrdered() -> Element {
                         drag_over_status: drag_over_status,
                         drag_over_position: drag_over_position,
                         mouse_position: mouse_position,
+                        editing_task: editing_task,
                     }
                     
                     KanbanColumnOrdered {
@@ -189,6 +192,7 @@ pub fn KanbanViewOrdered() -> Element {
                         drag_over_status: drag_over_status,
                         drag_over_position: drag_over_position,
                         mouse_position: mouse_position,
+                        editing_task: editing_task,
                     }
                     
                     KanbanColumnOrdered {
@@ -198,6 +202,7 @@ pub fn KanbanViewOrdered() -> Element {
                         drag_over_status: drag_over_status,
                         drag_over_position: drag_over_position,
                         mouse_position: mouse_position,
+                        editing_task: editing_task,
                     }
                     
                     KanbanColumnOrdered {
@@ -207,6 +212,7 @@ pub fn KanbanViewOrdered() -> Element {
                         drag_over_status: drag_over_status,
                         drag_over_position: drag_over_position,
                         mouse_position: mouse_position,
+                        editing_task: editing_task,
                     }
                     
                     KanbanColumnOrdered {
@@ -216,6 +222,7 @@ pub fn KanbanViewOrdered() -> Element {
                         drag_over_status: drag_over_status,
                         drag_over_position: drag_over_position,
                         mouse_position: mouse_position,
+                        editing_task: editing_task,
                     }
                 }
             }
@@ -255,6 +262,23 @@ pub fn KanbanViewOrdered() -> Element {
                 }
             }
         }
+        
+        // Edit modal
+        if let Some(task) = editing_task() {
+            TaskEditModal {
+                task: task.clone(),
+                on_save: move |updated_task: Task| {
+                    // Update the task in the list
+                    tasks.with_mut(|tasks| {
+                        if let Some(index) = tasks.iter().position(|t| t.id == updated_task.id) {
+                            tasks[index] = updated_task;
+                        }
+                    });
+                    editing_task.set(None);
+                },
+                on_cancel: move |_| editing_task.set(None),
+            }
+        }
     }
 }
 
@@ -266,6 +290,7 @@ fn KanbanColumnOrdered(
     drag_over_status: Signal<Option<TaskStatus>>,
     drag_over_position: Signal<Option<usize>>,
     mouse_position: Signal<(f64, f64)>,
+    editing_task: Signal<Option<Task>>,
 ) -> Element {
     let column_name = match status {
         TaskStatus::Todo => "Todo",
@@ -370,6 +395,7 @@ fn KanbanColumnOrdered(
                             dragging_task: dragging_task,
                             drag_over_position: drag_over_position,
                             is_column_active: is_drag_over,
+                            on_edit: move |task| editing_task.set(Some(task)),
                         }
                     }
                 })}
@@ -425,6 +451,7 @@ fn KanbanCardOrdered(
     dragging_task: Signal<Option<Uuid>>,
     drag_over_position: Signal<Option<usize>>,
     is_column_active: bool,
+    on_edit: EventHandler<Task>,
 ) -> Element {
     let is_dragging = dragging_task.read().as_ref() == Some(&task.id);
     let opacity = if is_dragging { "0.3" } else { "1" };
@@ -453,10 +480,22 @@ fn KanbanCardOrdered(
             
             // Card content
             div {
-                style: "pointer-events: none;", // Prevent text selection
+                style: "position: relative;",
+                
+                // Edit button
+                button {
+                    style: "position: absolute; top: 2px; right: 2px; padding: 2px 6px;
+                           background: #e3f2fd; color: #1976d2; border: none; border-radius: 3px;
+                           cursor: pointer; font-size: 11px; font-weight: 500;",
+                    onclick: move |e| {
+                        e.stop_propagation();
+                        on_edit.call(task.clone());
+                    },
+                    "Edit"
+                }
                 
                 h4 { 
-                    style: "margin: 0 0 4px 0; font-size: 14px; font-weight: 500; color: #333;", 
+                    style: "margin: 0 0 4px 0; font-size: 14px; font-weight: 500; color: #333; padding-right: 40px;", 
                     "{task.title}" 
                 }
                 
