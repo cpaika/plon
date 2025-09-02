@@ -265,6 +265,12 @@ impl ClaudeCodeService {
                 session.append_log(&format!("PR created: {}", pr_url));
                 repository.update_session(&session).await?;
 
+                // Note: Task status update to Review should be handled by PR monitor service
+                // which periodically checks for PR creation and updates task status accordingly
+                let _ = log_sender
+                    .send((session_id, format!("PR created, task will be marked as Review by PR monitor")))
+                    .await;
+
                 let _ = log_sender
                     .send((session_id, format!("PR created: {}", pr_url)))
                     .await;

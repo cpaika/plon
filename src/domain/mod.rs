@@ -8,6 +8,7 @@ pub mod recurring;
 pub mod resource;
 pub mod task;
 pub mod task_config;
+pub mod task_execution;
 
 #[cfg(test)]
 mod goal_tests;
