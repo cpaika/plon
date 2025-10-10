@@ -27,35 +27,41 @@ fn NavBar() -> Element {
             
             div {
                 class: "nav-menu",
-                
-                NavItem { 
+
+                NavItem {
                     route: Route::Map,
                     label: "Map",
                     icon: "🗺️"
                 }
-                
+
                 NavItem {
                     route: Route::List,
                     label: "List",
                     icon: "📝"
                 }
-                
+
                 NavItem {
                     route: Route::Kanban,
                     label: "Kanban",
                     icon: "📋"
                 }
-                
+
                 NavItem {
                     route: Route::Timeline,
                     label: "Timeline",
                     icon: "📅"
                 }
-                
+
                 NavItem {
                     route: Route::Gantt,
                     label: "Gantt",
                     icon: "📊"
+                }
+
+                NavItem {
+                    route: Route::Goals,
+                    label: "Goals",
+                    icon: "🎯"
                 }
             }
             
